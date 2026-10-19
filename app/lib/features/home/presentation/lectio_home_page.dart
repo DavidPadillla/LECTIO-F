@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../auth/presentation/lectio_auth_page.dart';
+
 const _lectioGreen = Color(0xFF27AE60);
 const _lectioGreenDark = Color(0xFF219150);
 const _lectioNavy = Color(0xFF2C3E50);
@@ -119,6 +121,11 @@ class _LectioHomePageState extends State<LectioHomePage> {
     );
   }
 
+  void _openLogin() {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const LectioAuthPage()));
+  }
+
   void _openBook(String url) {
     _comingSoon();
   }
@@ -146,7 +153,7 @@ class _LectioHomePageState extends State<LectioHomePage> {
                   onAuthors: () => _goTo(_authorsKey),
                   onHelp: () => _goTo(_helpKey),
                   onVirtualBooks: () => _goTo(_collectionKey),
-                  onLogin: _comingSoon,
+                  onLogin: _openLogin,
                 ),
               ),
             ),

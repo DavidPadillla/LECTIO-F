@@ -3,8 +3,44 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:app/app/lectio_app.dart';
+import 'package:app/features/auth/presentation/lectio_auth_page.dart';
+import 'package:app/features/home/presentation/lectio_home_page.dart';
 
 void main() {
+  testWidgets('auth page switches to registration and validates its fields', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: LectioAuthPage()));
+
+    expect(find.text('Bienvenido de nuevo'), findsOneWidget);
+    await tester.tap(find.text('¿No tienes cuenta? Regístrate'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Crear cuenta'), findsNWidgets(2));
+    expect(find.text('Confirmar contraseña'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear cuenta'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ingresa tu nombre de usuario.'), findsOneWidget);
+    expect(find.text('Ingresa tu contraseña.'), findsOneWidget);
+  });
+
+  testWidgets('home navigation opens the login and registration page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: LectioHomePage(enableVideo: false)),
+    );
+
+    await tester.tap(find.byTooltip('Abrir navegación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Iniciar Sesión').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bienvenido de nuevo'), findsOneWidget);
+    expect(find.text('¿No tienes cuenta? Regístrate'), findsOneWidget);
+  });
+
   test('original arcade soundtrack is bundled', () async {
     final soundtrack = await rootBundle.load('assets/audio/lectio_arcade.wav');
     expect(soundtrack.lengthInBytes, greaterThan(1000));
