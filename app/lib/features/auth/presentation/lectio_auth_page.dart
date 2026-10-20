@@ -3,13 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../data/biometric_session_store.dart';
 import '../data/lectio_auth_service.dart';
 import 'lectio_member_page.dart';
 
 class LectioAuthPage extends StatefulWidget {
-  const LectioAuthPage({super.key, this.authService});
+  const LectioAuthPage({
+    super.key,
+    this.authService,
+    this.biometricSessionStore,
+  });
 
   final LectioAuthService? authService;
+  final BiometricSessionStore? biometricSessionStore;
 
   @override
   State<LectioAuthPage> createState() => _LectioAuthPageState();
@@ -23,7 +29,11 @@ class _LectioAuthPageState extends State<LectioAuthPage>
   final _confirmationController = TextEditingController();
   late final AnimationController _entrance;
   late final LectioAuthService _authService;
+  late final BiometricSessionStore _biometricSessionStore;
   late final bool _ownsAuthService;
+  bool _biometricAvailable = false;
+  bool _hasBiometricSession = false;
+  bool _automaticBiometricAttemptStarted = false;
   bool _isRegistering = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -38,10 +48,33 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     super.initState();
     _ownsAuthService = widget.authService == null;
     _authService = widget.authService ?? LectioAuthService();
+    _biometricSessionStore =
+        widget.biometricSessionStore ?? SecureBiometricSessionStore();
+    unawaited(_loadBiometricStatus());
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..forward();
+  }
+
+  Future<void> _loadBiometricStatus() async {
+    try {
+      final available = await _biometricSessionStore.isAvailable();
+      final hasSession =
+          available && await _biometricSessionStore.hasSavedCredentials();
+      if (mounted) {
+        setState(() {
+          _biometricAvailable = available;
+          _hasBiometricSession = hasSession;
+        });
+        if (hasSession && !_automaticBiometricAttemptStarted) {
+          _automaticBiometricAttemptStarted = true;
+          unawaited(_signInWithBiometrics());
+        }
+      }
+    } on AuthException catch (error) {
+      if (mounted) setState(() => _message = error.message);
+    }
   }
 
   @override
@@ -63,7 +96,7 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     });
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool activateBiometrics = false}) async {
     if (_isLoading || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     setState(() {
@@ -100,38 +133,52 @@ class _LectioAuthPageState extends State<LectioAuthPage>
         password: _passwordController.text,
       );
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _successTitle = '¡Bienvenido, ${session.username}!';
-        _successMessage = 'PREPARANDO TU BIBLIOTECA...';
-        _showSuccess = true;
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 850));
-      if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        PageRouteBuilder<void>(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              LectioMemberPage(session: session),
-          transitionDuration: const Duration(milliseconds: 650),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final transition = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
+      setState(() => _isLoading = false);
+      if (activateBiometrics) {
+        final authenticated = await _biometricSessionStore.authenticate(
+          reason: 'Confirma tu identidad para activar el acceso a Lectio.',
+        );
+        if (authenticated) {
+          await _biometricSessionStore.saveCredentials(
+            BiometricCredentials(
+              username: session.username,
+              password: _passwordController.text,
+            ),
+          );
+          if (mounted) {
+            setState(() => _hasBiometricSession = true);
+            await _showBiometricNotice(
+              'Huella activada',
+              'La próxima vez que abras Lectio podrás entrar con tu huella.',
             );
-            return FadeTransition(
-              opacity: transition,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, .025),
-                  end: Offset.zero,
-                ).animate(transition),
-                child: child,
-              ),
-            );
-          },
-        ),
-      );
+          }
+        } else if (mounted) {
+          await _showBiometricNotice(
+            'No se activó la huella',
+            'No se confirmó la verificación biométrica. Iniciaste sesión, pero la próxima vez tendrás que volver a activar esta opción.',
+          );
+        }
+      } else {
+        try {
+          await _offerBiometricAccess(session);
+        } on AuthException catch (error) {
+          if (!mounted) return;
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('No se activó el acceso biométrico'),
+              content: Text(error.message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Continuar'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+      if (mounted) await _enterMemberPage(session);
     } on AuthException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -140,6 +187,170 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _offerBiometricAccess(AuthSession session) async {
+    final available = await _biometricSessionStore.isAvailable();
+    if (!mounted || !available) return;
+
+    final alreadyEnabled = await _biometricSessionStore.hasSavedCredentials();
+    if (!mounted) return;
+    if (alreadyEnabled) {
+      await _biometricSessionStore.saveCredentials(
+        BiometricCredentials(
+          username: session.username,
+          password: _passwordController.text,
+        ),
+      );
+      setState(() {
+        _hasBiometricSession = true;
+      });
+      return;
+    }
+
+    final enable = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.fingerprint_rounded, size: 40),
+        title: const Text('Activa el acceso con huella'),
+        content: const Text(
+          'La próxima vez podrás entrar a Lectio con tu huella o la biometría de este dispositivo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Ahora no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Activar'),
+          ),
+        ],
+      ),
+    );
+    if (enable != true || !mounted) return;
+
+    final authenticated = await _biometricSessionStore.authenticate(
+      reason: 'Confirma tu identidad para activar el acceso a Lectio.',
+    );
+    if (!mounted) return;
+    if (!authenticated) {
+      await _showBiometricNotice(
+        'No se activó la huella',
+        'No se confirmó la verificación biométrica. Iniciaste sesión, pero la próxima vez tendrás que volver a activar esta opción.',
+      );
+      return;
+    }
+    await _biometricSessionStore.saveCredentials(
+      BiometricCredentials(
+        username: session.username,
+        password: _passwordController.text,
+      ),
+    );
+    if (mounted) {
+      setState(() => _hasBiometricSession = true);
+      await _showBiometricNotice(
+        'Huella activada',
+        'La próxima vez que abras Lectio podrás entrar con tu huella.',
+      );
+    }
+  }
+
+  Future<void> _showBiometricNotice(String title, String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          title == 'Huella activada'
+              ? Icons.fingerprint_rounded
+              : Icons.info_outline_rounded,
+          size: 38,
+        ),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _signInWithBiometrics() async {
+    if (_isLoading || !_hasBiometricSession) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isLoading = true;
+      _message = null;
+    });
+
+    try {
+      final credentials = await _biometricSessionStore
+          .authenticateAndReadCredentials();
+      if (credentials == null) {
+        if (mounted) {
+          setState(
+            () => _message = 'No se completó la huella. Puedes intentarlo otra vez o iniciar sesión con tu contraseña.',
+          );
+        }
+        return;
+      }
+      final session = await _authService.login(
+        username: credentials.username,
+        password: credentials.password,
+      );
+      if (mounted) await _enterMemberPage(session);
+    } on InvalidCredentialsException catch (error) {
+      await _biometricSessionStore.clearCredentials();
+      if (!mounted) return;
+      setState(() {
+        _hasBiometricSession = false;
+        _message = error.message;
+      });
+    } on AuthException catch (error) {
+      if (mounted) setState(() => _message = error.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _enterMemberPage(AuthSession session) async {
+    setState(() {
+      _successTitle = '¡Bienvenido, ${session.username}!';
+      _successMessage = 'PREPARANDO TU BIBLIOTECA...';
+      _showSuccess = true;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 850));
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            LectioMemberPage(
+              session: session,
+            ),
+        transitionDuration: const Duration(milliseconds: 650),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final transition = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: transition,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, .025),
+                end: Offset.zero,
+              ).animate(transition),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -392,6 +603,35 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                         label: _isRegistering ? 'Crear cuenta' : 'Entrar',
                         loading: _isLoading,
                         onPressed: _submit,
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeInOutCubic,
+                        child: !_isRegistering && _biometricAvailable
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: OutlinedButton.icon(
+                                  onPressed: _isLoading
+                                      ? null
+                                      : _hasBiometricSession
+                                      ? _signInWithBiometrics
+                                      : () => _submit(activateBiometrics: true),
+                                  icon: const Icon(Icons.fingerprint_rounded),
+                                  label: Text(
+                                    _hasBiometricSession
+                                        ? 'Entrar con huella o biometría'
+                                        : 'Iniciar sesión y activar huella',
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF1A6B45),
+                                    side: const BorderSide(
+                                      color: Color(0xFFBCD8C6),
+                                    ),
+                                    minimumSize: const Size.fromHeight(48),
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 19),
                       Container(height: 1, color: line),

@@ -23,6 +23,10 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
+class InvalidCredentialsException extends AuthException {
+  const InvalidCredentialsException(super.message);
+}
+
 class LectioAuthService {
   LectioAuthService({http.Client? client, Uri? backendUri})
     : _client = client ?? createAuthHttpClient(),
@@ -73,10 +77,12 @@ class LectioAuthService {
       );
     }
 
-    if (location.path == '/api/login' ||
+    if (_isLoginPath(location.path) ||
         location.path == '/api/register' ||
         location.queryParameters.containsKey('error')) {
-      throw const AuthException('Usuario o contraseña incorrectos.');
+      throw const InvalidCredentialsException(
+        'Usuario o contraseña incorrectos.',
+      );
     }
 
     final cookie = _sessionCookie(response.headers['set-cookie']);
@@ -172,6 +178,8 @@ class LectioAuthService {
     }
     return _backendUri.resolve(rawLocation);
   }
+
+  bool _isLoginPath(String path) => path == '/login' || path == '/api/login';
 
   String? _sessionCookie(String? setCookie) {
     if (setCookie == null) return null;

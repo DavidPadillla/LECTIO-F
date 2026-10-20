@@ -12,9 +12,14 @@ const _paper = Color(0xFFF7FAF8);
 const _contentWidth = 1240.0;
 
 class LectioMemberPage extends StatefulWidget {
-  const LectioMemberPage({super.key, required this.session});
+  const LectioMemberPage({
+    super.key,
+    required this.session,
+    this.authService,
+  });
 
   final AuthSession session;
+  final LectioAuthService? authService;
 
   @override
   State<LectioMemberPage> createState() => _LectioMemberPageState();
@@ -26,7 +31,9 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
   final _collectionKey = GlobalKey();
   final _authorsKey = GlobalKey();
   final _helpKey = GlobalKey();
-  late final LectioAuthService _authService = LectioAuthService();
+  late final bool _ownsAuthService = widget.authService == null;
+  late final LectioAuthService _authService =
+      widget.authService ?? LectioAuthService();
   bool _isLoggingOut = false;
 
   static const _books = [
@@ -77,7 +84,7 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _authService.close();
+    if (_ownsAuthService) _authService.close();
     super.dispose();
   }
 
@@ -110,7 +117,8 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
       builder: (context) => AlertDialog(
         title: const Text('¿Cerrar sesión?'),
         content: const Text(
-          'Se cerrará tu sesión y volverás a la página pública de Lectio.',
+          'Se cerrará tu sesión y volverás a la página pública de Lectio. '
+          'El acceso con huella seguirá disponible en este dispositivo.',
         ),
         actions: [
           TextButton(
@@ -230,7 +238,7 @@ class _MemberNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 980;
+        final compact = constraints.maxWidth < 1400;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 22),
           child: Row(

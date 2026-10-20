@@ -82,22 +82,24 @@ void main() {
     );
   });
 
-  test('login rejects a redirect back to the login form', () async {
-    final client = _FakeClient(
-      statusCode: 302,
-      headers: {'location': '/api/login?error'},
-    );
-    final service = LectioAuthService(
-      client: client,
-      backendUri: Uri.parse('https://example.test'),
-    );
-    addTearDown(service.close);
+  for (final loginPath in ['/api/login?error', '/login?error']) {
+    test('login rejects a redirect to $loginPath', () async {
+      final client = _FakeClient(
+        statusCode: 302,
+        headers: {'location': loginPath},
+      );
+      final service = LectioAuthService(
+        client: client,
+        backendUri: Uri.parse('https://example.test'),
+      );
+      addTearDown(service.close);
 
-    await expectLater(
-      service.login(username: 'reader', password: 'wrong'),
-      throwsA(isA<AuthException>()),
-    );
-  });
+      await expectLater(
+        service.login(username: 'reader', password: 'wrong'),
+        throwsA(isA<InvalidCredentialsException>()),
+      );
+    });
+  }
 
   test(
     'login does not report success when no session cookie is returned',
