@@ -118,6 +118,27 @@ void main() {
       );
     },
   );
+
+  test('logout posts the authenticated session cookie', () async {
+    final client = _FakeClient(statusCode: 302, headers: {});
+    final service = LectioAuthService(
+      client: client,
+      backendUri: Uri.parse('https://example.test'),
+    );
+    addTearDown(service.close);
+
+    await service.logout(
+      session: const AuthSession(
+        username: 'reader',
+        cookie: 'JSESSIONID=abc123',
+      ),
+    );
+
+    expect(client.lastRequest.url.path, '/api/logout');
+    expect(client.lastRequest.method, 'POST');
+    expect(client.lastRequest.headers['cookie'], 'JSESSIONID=abc123');
+    expect(client.lastRequest.followRedirects, isFalse);
+  });
 }
 
 class _FakeClient extends http.BaseClient {

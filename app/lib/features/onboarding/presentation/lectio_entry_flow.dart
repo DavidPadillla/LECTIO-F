@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
+import '../../home/presentation/lectio_hero_media.dart';
 import '../../home/presentation/lectio_home_page.dart';
 
 const _ink = Color(0xFFF3F8F3);
@@ -51,8 +52,12 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
       duration: const Duration(milliseconds: 540),
     );
     _game.addListener(_handleGameTick);
+    if (widget.enableHeroVideo) unawaited(LectioHeroMedia.preload());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      unawaited(
+        precacheImage(const AssetImage(LectioHeroMedia.posterPath), context),
+      );
       if (MediaQuery.disableAnimationsOf(context)) {
         _game.value = 1;
         _finish();
@@ -66,13 +71,9 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
   Future<void> _startMusic() async {
     try {
       await _music.setReleaseMode(ReleaseMode.stop);
-      await _music.play(
-        AssetSource('audio/lectio_arcade.wav'),
-        volume: _muted ? 0 : .45,
-      );
+      await _playMusic();
     } catch (error, stackTrace) {
-      if (!mounted) return;
-      setState(() => _musicUnavailable = true);
+      if (mounted) setState(() => _musicUnavailable = true);
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
@@ -84,15 +85,41 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
     }
   }
 
+  Future<void> _playMusic() async {
+    try {
+      await _music.play(
+        AssetSource('audio/lectio_arcade.wav'),
+        volume: _muted ? 0 : .45,
+      );
+      if (mounted) setState(() => _musicUnavailable = false);
+    } catch (error, stackTrace) {
+      if (mounted) setState(() => _musicUnavailable = true);
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Lectio intro audio',
+          context: ErrorDescription(
+            'while playing the intro soundtrack; use the music button to retry',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _toggleMusic() async {
-    if (_musicUnavailable) return;
+    if (_musicUnavailable) {
+      _muted = false;
+      await _playMusic();
+      return;
+    }
     final nextMuted = !_muted;
     setState(() => _muted = nextMuted);
     try {
       if (nextMuted) {
         await _music.pause();
       } else {
-        await _music.resume();
+        await _playMusic();
       }
     } catch (error, stackTrace) {
       if (!mounted) return;
@@ -132,15 +159,28 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
   void _finish() {
     if (_finished || !mounted) return;
     _finished = true;
-    unawaited(_music.stop());
     final callback = widget.onFinished;
     if (callback != null) {
+      unawaited(_music.stop());
       callback();
       return;
     }
+    unawaited(_goHome());
+  }
+
+  Future<void> _goHome() async {
+    if (widget.enableHeroVideo) {
+      await LectioHeroMedia.preload().timeout(
+        const Duration(milliseconds: 1500),
+        onTimeout: () => null,
+      );
+    }
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
-        transitionDuration: const Duration(milliseconds: 500),
+        transitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 600),
         pageBuilder: (_, _, _) =>
             LectioHomePage(enableVideo: widget.enableHeroVideo),
         transitionsBuilder: (_, animation, _, child) => FadeTransition(
@@ -179,8 +219,7 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
           animation: Listenable.merge([_game, _jump]),
           builder: (context, _) {
             final progress = _game.value;
-            final automaticPages = (progress * 3.15).floor().clamp(0, 3);
-            final pages = automaticPages;
+            final pages = (progress * 3.15).floor().clamp(0, 3);
             return Stack(
               fit: StackFit.expand,
               children: [
@@ -209,12 +248,11 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
                             const Spacer(),
                             IconButton.filledTonal(
                               tooltip: _musicUnavailable
-                                  ? 'Música no disponible'
+                                  ? 'Tocar para reintentar música'
                                   : _muted
                                   ? 'Activar música'
                                   : 'Silenciar música',
-                              onPressed:
-                                  widget.enableMusic && !_musicUnavailable
+                              onPressed: widget.enableMusic
                                   ? _toggleMusic
                                   : null,
                               style: IconButton.styleFrom(

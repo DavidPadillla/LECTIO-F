@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:app/app/lectio_app.dart';
+import 'package:app/features/auth/data/lectio_auth_service.dart';
 import 'package:app/features/auth/presentation/lectio_auth_page.dart';
+import 'package:app/features/auth/presentation/lectio_member_page.dart';
 import 'package:app/features/home/presentation/lectio_home_page.dart';
 
 void main() {
@@ -12,17 +14,54 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: LectioAuthPage()));
 
-    expect(find.text('Bienvenido de nuevo'), findsOneWidget);
-    await tester.tap(find.text('¿No tienes cuenta? Regístrate'));
+    expect(find.textContaining('Hola de'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('¿No tienes cuenta? Crear cuenta'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('¿No tienes cuenta? Crear cuenta'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Crear cuenta'), findsNWidgets(2));
+    expect(find.textContaining('Crea tu'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Confirmar contraseña'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Confirmar contraseña'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Crear cuenta'));
+    await tester.scrollUntilVisible(
+      find.text('CREAR CUENTA'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('CREAR CUENTA'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ingresa tu nombre de usuario.'), findsOneWidget);
-    expect(find.text('Ingresa tu contraseña.'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Usuario requerido'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Usuario requerido'), findsOneWidget);
+    expect(find.text('Contraseña requerida'), findsOneWidget);
+  });
+
+  testWidgets('auth page keeps its two-panel layout on wide screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: LectioAuthPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LECTIO'), findsNWidgets(2));
+    expect(find.textContaining('Tu próxima'), findsOneWidget);
+    expect(find.text('ENTRAR'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('home navigation opens the login and registration page', (
@@ -37,8 +76,46 @@ void main() {
     await tester.tap(find.text('Iniciar Sesión').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('Bienvenido de nuevo'), findsOneWidget);
-    expect(find.text('¿No tienes cuenta? Regístrate'), findsOneWidget);
+    expect(find.textContaining('Hola de'), findsOneWidget);
+    expect(find.text('¿No tienes cuenta? Crear cuenta'), findsOneWidget);
+  });
+
+  testWidgets('member page shows account sections and future destinations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LectioMemberPage(
+          session: AuthSession(username: 'lector', cookie: 'JSESSIONID=test'),
+        ),
+      ),
+    );
+
+    expect(find.text('Hola, lector'), findsOneWidget);
+    expect(find.text('¡Queremos\nconocerte!'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Nuestra colección.'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Nuestra colección.'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Autores destacados.'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Autores destacados.'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Abrir navegación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reserva').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Reserva estará disponible próximamente.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   test('original arcade soundtrack is bundled', () async {
@@ -51,6 +128,11 @@ void main() {
     expect(video.lengthInBytes, greaterThan(1000000));
   });
 
+  test('local hero poster is bundled', () async {
+    final poster = await rootBundle.load('lib/images/hero_poster.jpg');
+    expect(poster.lengthInBytes, greaterThan(10000));
+  });
+
   testWidgets('intro opens the Lectio home page when tapped', (tester) async {
     await tester.pumpWidget(
       const LectioApp(enableIntroMusic: false, enableHeroVideo: false),
@@ -58,6 +140,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.byType(LectioHomePage), findsNothing);
     expect(find.text('LECTIO QUEST'), findsOneWidget);
     expect(find.text('Saltar'), findsNothing);
     expect(find.text('0/3'), findsNothing);
@@ -66,6 +149,9 @@ void main() {
 
     await tester.tapAt(const Offset(20, 120));
     await tester.pumpAndSettle();
+
+    expect(find.byType(LectioHomePage), findsOneWidget);
+    expect(find.text('Preparando tu biblioteca'), findsNothing);
     expect(find.textContaining('Explora nuestra'), findsOneWidget);
     expect(find.text('REC · 001'), findsNothing);
     expect(find.text('01 / 04'), findsNothing);

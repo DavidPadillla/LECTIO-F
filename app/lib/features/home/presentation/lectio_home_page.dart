@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../auth/presentation/lectio_auth_page.dart';
+import 'lectio_hero_media.dart';
 
 const _lectioGreen = Color(0xFF27AE60);
 const _lectioGreenDark = Color(0xFF219150);
@@ -122,8 +125,31 @@ class _LectioHomePageState extends State<LectioHomePage> {
   }
 
   void _openLogin() {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const LectioAuthPage()));
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LectioAuthPage(),
+        transitionDuration: const Duration(milliseconds: 600),
+        reverseTransitionDuration: const Duration(milliseconds: 400),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final transition = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: transition,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(.035, 0),
+                end: Offset.zero,
+              ).animate(transition),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _openBook(String url) {
@@ -356,41 +382,36 @@ class _HeroSection extends StatefulWidget {
 }
 
 class _HeroSectionState extends State<_HeroSection> {
-  VideoPlayerController? _videoController;
-  bool _videoReady = false;
+  VideoPlayerController? _video;
+  bool _showVideo = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.enableVideo) {
-      _videoController = VideoPlayerController.asset('lib/videos/Video3.mp4');
-      _initializeVideo();
-    }
+    if (widget.enableVideo) unawaited(_attachVideo());
   }
 
-  Future<void> _initializeVideo() async {
-    try {
-      final controller = _videoController!;
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-      await controller.play();
-      if (mounted) setState(() => _videoReady = true);
-    } catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'Lectio home hero',
-          context: ErrorDescription('while initializing the local hero video'),
-        ),
-      );
+  Future<void> _attachVideo() async {
+    final controller = await LectioHeroMedia.preload();
+    if (!mounted || controller == null) return;
+    controller.addListener(_onVideoTick);
+    setState(() => _video = controller);
+    _onVideoTick();
+  }
+
+  void _onVideoTick() {
+    final controller = _video;
+    if (!mounted || controller == null || _showVideo) return;
+    if (controller.value.isInitialized &&
+        controller.value.position > Duration.zero) {
+      setState(() => _showVideo = true);
     }
   }
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    _video?.removeListener(_onVideoTick);
+    unawaited(_video?.pause());
     super.dispose();
   }
 
@@ -404,15 +425,26 @@ class _HeroSectionState extends State<_HeroSection> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              const ColoredBox(color: Color(0xFF163B2A)),
-              if (_videoReady && _videoController != null)
-                ClipRect(
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _videoController!.value.size.width,
-                      height: _videoController!.value.size.height,
-                      child: VideoPlayer(_videoController!),
+              Image.asset(
+                LectioHeroMedia.posterPath,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) =>
+                    const ColoredBox(color: Color(0xFF163B2A)),
+              ),
+              if (_video != null)
+                AnimatedOpacity(
+                  opacity: _showVideo ? 1 : 0,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeOut,
+                  child: ClipRect(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _video!.value.size.width,
+                        height: _video!.value.size.height,
+                        child: VideoPlayer(_video!),
+                      ),
                     ),
                   ),
                 ),
@@ -798,14 +830,12 @@ class _BookCard extends StatelessWidget {
                 Image.network(
                   book.image,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => ColoredBox(
-                    color: book.accent.withValues(alpha: .18),
-                    child: Icon(
-                      Icons.auto_stories_rounded,
-                      size: 58,
-                      color: book.accent,
-                    ),
-                  ),
+                  loadingBuilder: (context, child, loadingProgress) =>
+                      loadingProgress == null
+                      ? child
+                      : _BookCoverPlaceholder(accent: book.accent),
+                  errorBuilder: (context, error, stackTrace) =>
+                      _BookCoverPlaceholder(accent: book.accent),
                 ),
                 DecoratedBox(
                   decoration: BoxDecoration(
@@ -919,6 +949,22 @@ class _BookCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BookCoverPlaceholder extends StatelessWidget {
+  const _BookCoverPlaceholder({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: accent.withValues(alpha: .18),
+      child: Center(
+        child: Icon(Icons.auto_stories_rounded, size: 58, color: accent),
       ),
     );
   }

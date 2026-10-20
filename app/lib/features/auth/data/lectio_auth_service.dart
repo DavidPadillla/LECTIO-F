@@ -89,6 +89,42 @@ class LectioAuthService {
     return AuthSession(username: username.trim(), cookie: cookie ?? '');
   }
 
+  Future<void> logout({required AuthSession session}) async {
+    final request = http.Request('POST', _backendUri.resolve('/api/logout'))
+      ..followRedirects = false
+      ..headers['Accept'] = 'text/html';
+    if (!kIsWeb && session.cookie.isNotEmpty) {
+      request.headers['Cookie'] = session.cookie;
+    }
+
+    try {
+      final streamedResponse = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 60));
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode < 200 || response.statusCode >= 400) {
+        throw AuthException(
+          'No se pudo cerrar la sesión (${response.statusCode}).',
+        );
+      }
+    } on AuthException {
+      rethrow;
+    } on TimeoutException {
+      throw const AuthException(
+        'El servidor está tardando demasiado. Inténtalo de nuevo.',
+      );
+    } on http.ClientException catch (error) {
+      if (kIsWeb) {
+        throw const AuthException(
+          'El navegador bloqueó el cierre de sesión. Revisa la configuración CORS del backend.',
+        );
+      }
+      throw AuthException(
+        'No se pudo conectar con el servidor de Lectio: ${error.message}',
+      );
+    }
+  }
+
   Future<http.Response> _postForm(
     String path,
     Map<String, String> fields,
