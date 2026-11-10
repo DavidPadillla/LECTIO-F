@@ -10,7 +10,10 @@ import 'package:app/features/auth/data/biometric_session_store.dart';
 import 'package:app/features/auth/data/lectio_auth_service.dart';
 import 'package:app/features/auth/presentation/lectio_auth_page.dart';
 import 'package:app/features/auth/presentation/lectio_member_page.dart';
+import 'package:app/features/challenges/presentation/desafio.dart';
 import 'package:app/features/home/presentation/lectio_home_page.dart';
+import 'package:app/features/reservations/presentation/reservas.dart';
+import 'package:app/features/virtual_books/presentation/libros.dart';
 
 void main() {
   testWidgets('auth page switches to registration and validates its fields', (
@@ -84,7 +87,7 @@ void main() {
     expect(find.text('¿No tienes cuenta? Crear cuenta'), findsOneWidget);
   });
 
-  testWidgets('member page shows account sections and future destinations', (
+  testWidgets('member page opens virtual books, reservations and challenge', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -112,13 +115,26 @@ void main() {
 
     await tester.tap(find.byTooltip('Abrir navegación'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reserva').last);
+    expect(find.text('Optimizador'), findsNothing);
+    await tester.tap(find.text('Libros Virtuales').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(LectioVirtualBooksPage), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Reserva estará disponible próximamente.'),
-      findsOneWidget,
-    );
+    await tester.tap(find.byTooltip('Abrir navegación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reserva').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(LectioReservationsPage), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Abrir navegación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Desafío').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(LectioChallengePage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

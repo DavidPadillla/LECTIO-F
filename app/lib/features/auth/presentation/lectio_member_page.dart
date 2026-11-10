@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../data/lectio_auth_service.dart';
+import '../../challenges/presentation/desafio.dart';
+import '../../reservations/presentation/reservas.dart';
+import '../../virtual_books/presentation/libros.dart';
 
 const _ink = Color(0xFF0D2B1D);
 const _inkSoft = Color(0xFF2D4A3A);
@@ -12,11 +15,7 @@ const _paper = Color(0xFFF7FAF8);
 const _contentWidth = 1240.0;
 
 class LectioMemberPage extends StatefulWidget {
-  const LectioMemberPage({
-    super.key,
-    required this.session,
-    this.authService,
-  });
+  const LectioMemberPage({super.key, required this.session, this.authService});
 
   final AuthSession session;
   final LectioAuthService? authService;
@@ -110,6 +109,11 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
       );
   }
 
+  void _openPage(Widget page) {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (context) => page));
+  }
+
   Future<void> _confirmLogout() async {
     if (_isLoggingOut) return;
     final confirmed = await showDialog<bool>(
@@ -171,7 +175,9 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
               onCollection: () => _goTo(_collectionKey),
               onAuthors: () => _goTo(_authorsKey),
               onHelp: () => _goTo(_helpKey),
-              onFuturePage: _showUnavailable,
+              onVirtualBooks: () => _openPage(const LectioVirtualBooksPage()),
+              onReservations: () => _openPage(const LectioReservationsPage()),
+              onChallenge: () => _openPage(const LectioChallengePage()),
               onLogout: _confirmLogout,
               loggingOut: _isLoggingOut,
             ),
@@ -220,7 +226,9 @@ class _MemberNavigation extends StatelessWidget {
     required this.onCollection,
     required this.onAuthors,
     required this.onHelp,
-    required this.onFuturePage,
+    required this.onVirtualBooks,
+    required this.onReservations,
+    required this.onChallenge,
     required this.onLogout,
     required this.loggingOut,
   });
@@ -230,7 +238,9 @@ class _MemberNavigation extends StatelessWidget {
   final VoidCallback onCollection;
   final VoidCallback onAuthors;
   final VoidCallback onHelp;
-  final ValueChanged<String> onFuturePage;
+  final VoidCallback onVirtualBooks;
+  final VoidCallback onReservations;
+  final VoidCallback onChallenge;
   final VoidCallback onLogout;
   final bool loggingOut;
 
@@ -292,10 +302,11 @@ class _MemberNavigation extends StatelessWidget {
                       case 'Ayuda':
                         onHelp();
                       case 'Libros Virtuales':
+                        onVirtualBooks();
                       case 'Reserva':
-                      case 'Optimizador':
+                        onReservations();
                       case 'Desafío':
-                        onFuturePage(value);
+                        onChallenge();
                       case 'Cerrar sesión':
                         onLogout();
                     }
@@ -310,10 +321,6 @@ class _MemberNavigation extends StatelessWidget {
                       child: Text('Libros Virtuales'),
                     ),
                     PopupMenuItem(value: 'Reserva', child: Text('Reserva')),
-                    PopupMenuItem(
-                      value: 'Optimizador',
-                      child: Text('Optimizador'),
-                    ),
                     PopupMenuItem(value: 'Desafío', child: Text('Desafío')),
                     PopupMenuItem(
                       value: 'Cerrar sesión',
@@ -328,20 +335,10 @@ class _MemberNavigation extends StatelessWidget {
                 _MemberNavLink(label: 'Ayuda', onTap: onHelp),
                 _MemberNavLink(
                   label: 'Libros Virtuales',
-                  onTap: () => onFuturePage('Libros Virtuales'),
+                  onTap: onVirtualBooks,
                 ),
-                _MemberNavLink(
-                  label: 'Reserva',
-                  onTap: () => onFuturePage('Reservas'),
-                ),
-                _MemberNavLink(
-                  label: 'Optimizador',
-                  onTap: () => onFuturePage('Optimizador'),
-                ),
-                _MemberNavLink(
-                  label: 'Desafío',
-                  onTap: () => onFuturePage('Desafío'),
-                ),
+                _MemberNavLink(label: 'Reserva', onTap: onReservations),
+                _MemberNavLink(label: 'Desafío', onTap: onChallenge),
                 const SizedBox(width: 8),
                 Tooltip(
                   message: username,
