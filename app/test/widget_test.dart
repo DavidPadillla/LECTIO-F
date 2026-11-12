@@ -12,7 +12,9 @@ import 'package:app/features/auth/presentation/lectio_auth_page.dart';
 import 'package:app/features/auth/presentation/lectio_member_page.dart';
 import 'package:app/features/challenges/presentation/desafio.dart';
 import 'package:app/features/home/presentation/lectio_home_page.dart';
+import 'package:app/features/reservations/data/reservas_service.dart';
 import 'package:app/features/reservations/presentation/reservas.dart';
+import 'package:app/features/virtual_books/data/libros_service.dart';
 import 'package:app/features/virtual_books/presentation/libros.dart';
 
 void main() {
@@ -90,10 +92,14 @@ void main() {
   testWidgets('member page opens virtual books, reservations and challenge', (
     tester,
   ) async {
+    final reservationService = _FakeReservasService();
+    final virtualBooksService = _FakeVirtualBooksService();
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: LectioMemberPage(
           session: AuthSession(username: 'lector', cookie: 'JSESSIONID=test'),
+          reservationService: reservationService,
+          virtualBooksService: virtualBooksService,
         ),
       ),
     );
@@ -119,6 +125,10 @@ void main() {
     await tester.tap(find.text('Libros Virtuales').last);
     await tester.pumpAndSettle();
     expect(find.byType(LectioVirtualBooksPage), findsOneWidget);
+    expect(
+      find.text('No se encontraron libros que coincidan con tu búsqueda.'),
+      findsOneWidget,
+    );
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
@@ -127,6 +137,7 @@ void main() {
     await tester.tap(find.text('Reserva').last);
     await tester.pumpAndSettle();
     expect(find.byType(LectioReservationsPage), findsOneWidget);
+    expect(find.text('No se encontraron libros'), findsOneWidget);
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
@@ -136,6 +147,117 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LectioChallengePage), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('virtual books search and category filters work', (tester) async {
+    tester.view.physicalSize = const Size(1100, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final service = _FakeVirtualBooksService(
+      books: [
+        LibroVirtual(
+          titulo: 'Cien años de soledad',
+          categoria: 'Novelas',
+          autor: 'Gabriel García Márquez',
+          descripcion: 'Una novela de realismo mágico.',
+          url: Uri.parse('https://example.test/novela'),
+        ),
+        LibroVirtual(
+          titulo: 'El cosmos',
+          categoria: 'Ciencia',
+          autor: 'Autora de prueba',
+          descripcion: 'Un viaje por el universo.',
+          url: Uri.parse('https://example.test/cosmos'),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LectioVirtualBooksPage(
+          session: const AuthSession(username: 'lector', cookie: ''),
+          service: service,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cien años de soledad'), findsOneWidget);
+    expect(find.text('El cosmos'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'cien ANOS');
+    await tester.pumpAndSettle();
+    expect(find.text('Cien años de soledad'), findsOneWidget);
+    expect(find.text('El cosmos'), findsNothing);
+    await tester.enterText(find.byType(TextField).first, '');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilterChip, 'Novelas'));
+    await tester.pumpAndSettle();
+    expect(find.text('El cosmos'), findsOneWidget);
+    expect(find.text('Cien años de soledad'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reservation page validates and submits the selected book', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final service = _FakeReservasService(
+      books: const [
+        ReservaBook(
+          id: 'book-1',
+          titulo: 'El libro reservado',
+          autor: 'Una autora',
+          categoria: 'Novelas',
+          stock: 2,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LectioReservationsPage(
+          session: const AuthSession(
+            username: 'lector',
+            cookie: 'JSESSIONID=test',
+          ),
+          service: service,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull, reason: 'initial reservation page');
+    expect(find.text('El libro reservado'), findsOneWidget);
+    await tester.tap(find.text('Reservar'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'reservation dialog');
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      'Lector de Prueba',
+    );
+    await tester.enterText(
+      find.byType(TextFormField).last,
+      'lector@example.com',
+    );
+    expect(tester.takeException(), isNull, reason: 'reservation form input');
+    await tester.tap(find.text('Confirmar reserva'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'reservation submitted');
+
+    expect(service.lastReservation?['bookId'], 'book-1');
+    expect(service.lastReservation?['fullName'], 'Lector de Prueba');
+    expect(service.lastReservation?['email'], 'lector@example.com');
+    expect(
+      service.lastReservation?['date'],
+      matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+    );
+    expect(find.text('Reserva realizada con éxito.'), findsOneWidget);
   });
 
   testWidgets('logout keeps saved biometric access for the next login', (
@@ -488,6 +610,46 @@ class _FakeBiometricSessionStore implements BiometricSessionStore {
   Future<void> clearCredentials() async {
     credentials = null;
   }
+}
+
+class _FakeReservasService implements ReservaDataSource {
+  _FakeReservasService({this.books = const []});
+
+  final List<ReservaBook> books;
+  Map<String, String>? lastReservation;
+
+  @override
+  Future<List<ReservaBook>> loadBooks({String? category}) async => books
+      .where((book) => category == null || book.categoria == category)
+      .toList();
+
+  @override
+  Future<void> createReservation({
+    required String bookId,
+    required String title,
+    required String category,
+    required String fullName,
+    required String email,
+    required String date,
+  }) async {
+    lastReservation = {
+      'bookId': bookId,
+      'title': title,
+      'category': category,
+      'fullName': fullName,
+      'email': email,
+      'date': date,
+    };
+  }
+}
+
+class _FakeVirtualBooksService implements LibrosVirtualesDataSource {
+  _FakeVirtualBooksService({this.books = const []});
+
+  final List<LibroVirtual> books;
+
+  @override
+  Future<List<LibroVirtual>> loadBooks() async => books;
 }
 
 class _AuthResponseClient extends http.BaseClient {

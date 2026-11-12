@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../data/lectio_auth_service.dart';
 import '../../challenges/presentation/desafio.dart';
+import '../../reservations/data/reservas_service.dart';
 import '../../reservations/presentation/reservas.dart';
+import '../../virtual_books/data/libros_service.dart';
 import '../../virtual_books/presentation/libros.dart';
 
 const _ink = Color(0xFF0D2B1D);
@@ -15,10 +17,18 @@ const _paper = Color(0xFFF7FAF8);
 const _contentWidth = 1240.0;
 
 class LectioMemberPage extends StatefulWidget {
-  const LectioMemberPage({super.key, required this.session, this.authService});
+  const LectioMemberPage({
+    super.key,
+    required this.session,
+    this.authService,
+    this.reservationService,
+    this.virtualBooksService,
+  });
 
   final AuthSession session;
   final LectioAuthService? authService;
+  final ReservaDataSource? reservationService;
+  final LibrosVirtualesDataSource? virtualBooksService;
 
   @override
   State<LectioMemberPage> createState() => _LectioMemberPageState();
@@ -175,8 +185,18 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
               onCollection: () => _goTo(_collectionKey),
               onAuthors: () => _goTo(_authorsKey),
               onHelp: () => _goTo(_helpKey),
-              onVirtualBooks: () => _openPage(const LectioVirtualBooksPage()),
-              onReservations: () => _openPage(const LectioReservationsPage()),
+              onVirtualBooks: () => _openPage(
+                LectioVirtualBooksPage(
+                  session: widget.session,
+                  service: widget.virtualBooksService,
+                ),
+              ),
+              onReservations: () => _openPage(
+                LectioReservationsPage(
+                  session: widget.session,
+                  service: widget.reservationService,
+                ),
+              ),
               onChallenge: () => _openPage(const LectioChallengePage()),
               onLogout: _confirmLogout,
               loggingOut: _isLoggingOut,
