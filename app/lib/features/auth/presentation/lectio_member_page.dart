@@ -40,7 +40,6 @@ class LectioMemberPage extends StatefulWidget {
 
 class _LectioMemberPageState extends State<LectioMemberPage> {
   final _scrollController = ScrollController();
-  final _homeKey = GlobalKey();
   final _collectionKey = GlobalKey();
   final _authorsKey = GlobalKey();
   final _helpKey = GlobalKey();
@@ -128,6 +127,38 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
         .push(MaterialPageRoute<void>(builder: (context) => page));
   }
 
+  Future<void> _openProfile() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Perfil'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CircleAvatar(
+              backgroundColor: Color(0xFFE6F3EB),
+              child: Icon(Icons.person_outline_rounded, color: _green),
+            ),
+            const SizedBox(height: 16),
+            const Text('Usuario'),
+            const SizedBox(height: 4),
+            Text(
+              widget.session.username,
+              style: const TextStyle(color: _ink, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmLogout() async {
     if (_isLoggingOut) return;
     final confirmed = await showDialog<bool>(
@@ -182,10 +213,11 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
             toolbarHeight: 76,
             elevation: 0,
             backgroundColor: Colors.white,
+            automaticallyImplyLeading: false,
             titleSpacing: 0,
             title: _MemberNavigation(
               username: widget.session.username,
-              onHome: () => _goTo(_homeKey),
+              onProfile: _openProfile,
               onCollection: () => _goTo(_collectionKey),
               onAuthors: () => _goTo(_authorsKey),
               onHelp: () => _goTo(_helpKey),
@@ -201,14 +233,14 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
                   service: widget.reservationService,
                 ),
               ),
-              onChallenge: () => _openPage(const LectioChallengePage()),
+              onChallenge: () =>
+                  _openPage(LectioChallengePage(session: widget.session)),
               onLogout: _confirmLogout,
               loggingOut: _isLoggingOut,
             ),
           ),
           SliverToBoxAdapter(
             child: _MemberHero(
-              key: _homeKey,
               username: widget.session.username,
               onProfile: () =>
                   _showUnavailable('El formulario de preferencias'),
@@ -249,7 +281,7 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
 class _MemberNavigation extends StatelessWidget {
   const _MemberNavigation({
     required this.username,
-    required this.onHome,
+    required this.onProfile,
     required this.onCollection,
     required this.onAuthors,
     required this.onHelp,
@@ -261,7 +293,7 @@ class _MemberNavigation extends StatelessWidget {
   });
 
   final String username;
-  final VoidCallback onHome;
+  final VoidCallback onProfile;
   final VoidCallback onCollection;
   final VoidCallback onAuthors;
   final VoidCallback onHelp;
@@ -280,38 +312,34 @@ class _MemberNavigation extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 22),
           child: Row(
             children: [
-              InkWell(
-                onTap: onHome,
-                borderRadius: BorderRadius.circular(8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.auto_stories, color: _green, size: 30),
-                    const SizedBox(width: 9),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'LECTIO',
-                          style: GoogleFonts.instrumentSerif(
-                            fontSize: 24,
-                            height: 1,
-                            color: _ink,
-                          ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_stories, color: _green, size: 30),
+                  const SizedBox(width: 9),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'LECTIO',
+                        style: GoogleFonts.instrumentSerif(
+                          fontSize: 24,
+                          height: 1,
+                          color: _ink,
                         ),
-                        Text(
-                          'BIBLIOTECA',
-                          style: GoogleFonts.jetBrainsMono(
-                            color: _green,
-                            fontSize: 8,
-                            letterSpacing: 1.4,
-                          ),
+                      ),
+                      Text(
+                        'BIBLIOTECA',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: _green,
+                          fontSize: 8,
+                          letterSpacing: 1.4,
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
               const Spacer(),
               if (compact)
@@ -320,8 +348,8 @@ class _MemberNavigation extends StatelessWidget {
                   icon: const Icon(Icons.menu_rounded, color: _ink),
                   onSelected: (value) {
                     switch (value) {
-                      case 'Inicio':
-                        onHome();
+                      case 'Perfil':
+                        onProfile();
                       case 'Libros Virtuales':
                         onVirtualBooks();
                       case 'Reserva':
@@ -333,7 +361,7 @@ class _MemberNavigation extends StatelessWidget {
                     }
                   },
                   itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'Inicio', child: Text('Inicio')),
+                    PopupMenuItem(value: 'Perfil', child: Text('Perfil')),
                     PopupMenuItem(
                       value: 'Libros Virtuales',
                       child: Text('Libros Virtuales'),
@@ -347,7 +375,6 @@ class _MemberNavigation extends StatelessWidget {
                   ],
                 )
               else ...[
-                _MemberNavLink(label: 'Inicio', onTap: onHome),
                 _MemberNavLink(label: 'Colección', onTap: onCollection),
                 _MemberNavLink(label: 'Autores', onTap: onAuthors),
                 _MemberNavLink(label: 'Ayuda', onTap: onHelp),
@@ -358,9 +385,10 @@ class _MemberNavigation extends StatelessWidget {
                 _MemberNavLink(label: 'Reserva', onTap: onReservations),
                 _MemberNavLink(label: 'Desafío', onTap: onChallenge),
                 const SizedBox(width: 8),
-                Tooltip(
-                  message: username,
-                  child: CircleAvatar(
+                IconButton(
+                  tooltip: 'Perfil de $username',
+                  onPressed: onProfile,
+                  icon: CircleAvatar(
                     radius: 17,
                     backgroundColor: const Color(0xFFE6F3EB),
                     child: Text(
@@ -414,7 +442,6 @@ class _MemberNavLink extends StatelessWidget {
 
 class _MemberHero extends StatelessWidget {
   const _MemberHero({
-    super.key,
     required this.username,
     required this.onProfile,
     required this.onExplore,

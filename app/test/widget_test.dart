@@ -273,6 +273,74 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('challenge lists books and keeps history of thought visible', (
+    tester,
+  ) async {
+    final source = _FakeChallengeDataSource();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LectioChallengePage(
+          session: const AuthSession(username: 'lector', cookie: ''),
+          dataSource: source,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('El Principito'), findsOneWidget);
+    expect(find.text('1984'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Harry Potter'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Harry Potter'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Historia del pensamiento'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Historia del pensamiento'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('challenge saves a chapter before unlocking the next one', (
+    tester,
+  ) async {
+    final source = _FakeChallengeDataSource();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LectioChallengePage(
+          session: const AuthSession(username: 'lector', cookie: ''),
+          dataSource: source,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('El Principito'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Leer capítulo 1'), findsOneWidget);
+    expect(
+      find.byTooltip('Completa el capítulo anterior').first,
+      findsOneWidget,
+    );
+    await tester.tap(find.byTooltip('Leer capítulo 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marcar como leído'), findsOneWidget);
+    await tester.tap(find.text('Marcar como leído'));
+    await tester.pumpAndSettle();
+
+    expect(source.savedChapters, [('principito', 1, 5)]);
+    expect(
+      find.text('Capítulo leído. Tu progreso quedó guardado.'),
+      findsOneWidget,
+    );
+    expect(find.text('Completado'), findsOneWidget);
+    expect(find.byTooltip('Leer capítulo 2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('member page opens virtual books, reservations and challenge', (
     tester,
   ) async {
@@ -869,6 +937,27 @@ class _FakeLectioAiDataSource implements LectioAiDataSource {
     if (analyticsError case final error?) throw error;
     return analytics;
   }
+}
+
+class _FakeChallengeDataSource implements ChallengeDataSource {
+  final Map<String, Set<int>> progress = {};
+  final List<(String, int, int)> savedChapters = [];
+
+  @override
+  Future<Map<String, Set<int>>> loadProgress() async => progress;
+
+  @override
+  Future<void> saveChapter({
+    required String bookId,
+    required int chapter,
+    required int totalChapters,
+  }) async {
+    savedChapters.add((bookId, chapter, totalChapters));
+    progress.putIfAbsent(bookId, () => <int>{}).add(chapter);
+  }
+
+  @override
+  Future<void> resetProgress() async => progress.clear();
 }
 
 class _AuthResponseClient extends http.BaseClient {
