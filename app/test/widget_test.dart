@@ -1,11 +1,14 @@
 import 'dart:convert';
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:app/app/lectio_app.dart';
+import 'package:app/features/analytics/data/lectio_ai_service.dart';
+import 'package:app/features/analytics/presentation/lectio_ai_insights.dart';
 import 'package:app/features/auth/data/biometric_session_store.dart';
 import 'package:app/features/auth/data/lectio_auth_service.dart';
 import 'package:app/features/auth/presentation/lectio_auth_page.dart';
@@ -89,6 +92,187 @@ void main() {
     expect(find.text('¿No tienes cuenta? Crear cuenta'), findsOneWidget);
   });
 
+  testWidgets('predictive books remain visible when analytics returns 503', (
+    tester,
+  ) async {
+    final source = _FakeLectioAiDataSource(
+      predictions: const LectioPredictions(
+        horizonDays: 30,
+        books: [
+          LectioPrediction(
+            bookId: 'lower-demand-id',
+            title: 'Libro con menos demanda',
+            category: 'Historia',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 1.25,
+          ),
+          LectioPrediction(
+            bookId: 'top-demand-id',
+            title: 'Libro con más demanda',
+            category: 'Novelas',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 5.9,
+          ),
+          LectioPrediction(
+            bookId: 'null-demand-id',
+            title: 'Libro sin estimación',
+            category: 'Ciencia',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: null,
+          ),
+          LectioPrediction(
+            bookId: 'fourth-book-id',
+            title: 'Libro del puesto cuatro',
+            category: 'Arte',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 4,
+          ),
+          LectioPrediction(
+            bookId: 'third-book-id',
+            title: 'Libro del puesto tres',
+            category: 'Historia',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 3,
+          ),
+          LectioPrediction(
+            bookId: 'second-book-id',
+            title: 'Libro del puesto dos',
+            category: 'Filosofía',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 2,
+          ),
+          LectioPrediction(
+            bookId: 'sixth-book-id',
+            title: 'Libro del puesto seis',
+            category: 'Ciencia',
+            status: 'PREDICCION_DISPONIBLE',
+            demand30Days: 0.5,
+          ),
+        ],
+      ),
+      analyticsError: const LectioAiException(
+        'Las tendencias por categoría no están disponibles por ahora.',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [LectioAiInsights(dataSource: source)]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Más solicitados próximamente'), findsOneWidget);
+    expect(find.text('Libro con más demanda'), findsOneWidget);
+    expect(find.text('Libro con menos demanda'), findsOneWidget);
+    expect(find.text('Libro del puesto cuatro'), findsOneWidget);
+    expect(find.text('Libro del puesto tres'), findsOneWidget);
+    expect(find.text('Libro del puesto dos'), findsOneWidget);
+    expect(find.text('Libro del puesto seis'), findsNothing);
+    expect(find.text('Libro sin estimación'), findsNothing);
+    expect(find.text('5.9'), findsNothing);
+    expect(
+      find.text('Las tendencias por categoría no están disponibles por ahora.'),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(find.text('Libro con más demanda')).dy,
+      lessThan(tester.getTopLeft(find.text('Libro con menos demanda')).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('accordion shows category and monthly real history graphs', (
+    tester,
+  ) async {
+    final source = _FakeLectioAiDataSource(
+      predictionsError: const LectioAiException(
+        'No se pudieron cargar las predicciones.',
+      ),
+      analytics: const LectioCategoryAnalytics(
+        categories: [
+          CategoryDemand(category: 'Novelas', demand: 532),
+          CategoryDemand(category: 'Fantasía', demand: 486),
+          CategoryDemand(category: 'Ciencia', demand: 391),
+        ],
+        monthlyDemand: [
+          MonthlyDemand(month: '2026-09', demand: 100),
+          MonthlyDemand(month: '2026-10', demand: 95),
+          MonthlyDemand(month: '2026-11', demand: 24),
+        ],
+        periodStart: '2024-11-11',
+        periodEnd: '2026-11-09',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [LectioAiInsights(dataSource: source)]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No se pudieron cargar las predicciones.'),
+      findsOneWidget,
+    );
+    expect(find.text('Novelas · 532'), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp('Gráfica radar de demanda histórica')),
+      findsNothing,
+    );
+    await tester.tap(find.text('Demanda histórica por categoría'));
+    await tester.pumpAndSettle();
+    expect(find.text('Novelas · 532'), findsOneWidget);
+    expect(find.text('Fantasía · 486'), findsOneWidget);
+    expect(find.textContaining('2024-11-11 al 2026-11-09'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Gráfica radar de demanda histórica')),
+      findsOneWidget,
+    );
+    expect(find.byType(RadarChart), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Demanda histórica por mes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demanda histórica por mes'));
+    await tester.pumpAndSettle();
+    expect(
+      find.bySemanticsLabel(RegExp('Gráfica de demanda histórica mensual')),
+      findsOneWidget,
+    );
+    expect(find.byType(LineChart), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty prediction and category results are informational', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [LectioAiInsights(dataSource: _FakeLectioAiDataSource())],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Aún no hay libros con una predicción de demanda disponible.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('LECTIO-AI no tiene estadísticas históricas disponibles.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('member page opens virtual books, reservations and challenge', (
     tester,
   ) async {
@@ -100,6 +284,7 @@ void main() {
           session: AuthSession(username: 'lector', cookie: 'JSESSIONID=test'),
           reservationService: reservationService,
           virtualBooksService: virtualBooksService,
+          lectioAiDataSource: _FakeLectioAiDataSource(),
         ),
       ),
     );
@@ -122,6 +307,9 @@ void main() {
     await tester.tap(find.byTooltip('Abrir navegación'));
     await tester.pumpAndSettle();
     expect(find.text('Optimizador'), findsNothing);
+    expect(find.text('Colección'), findsNothing);
+    expect(find.text('Autores'), findsNothing);
+    expect(find.text('Ayuda'), findsNothing);
     await tester.tap(find.text('Libros Virtuales').last);
     await tester.pumpAndSettle();
     expect(find.byType(LectioVirtualBooksPage), findsOneWidget);
@@ -650,6 +838,37 @@ class _FakeVirtualBooksService implements LibrosVirtualesDataSource {
 
   @override
   Future<List<LibroVirtual>> loadBooks() async => books;
+}
+
+class _FakeLectioAiDataSource implements LectioAiDataSource {
+  _FakeLectioAiDataSource({
+    this.predictions = const LectioPredictions(horizonDays: 30, books: []),
+    this.analytics = const LectioCategoryAnalytics(
+      categories: [],
+      monthlyDemand: [],
+      periodStart: null,
+      periodEnd: null,
+    ),
+    this.predictionsError,
+    this.analyticsError,
+  });
+
+  final LectioPredictions predictions;
+  final LectioCategoryAnalytics analytics;
+  final LectioAiException? predictionsError;
+  final LectioAiException? analyticsError;
+
+  @override
+  Future<LectioPredictions> loadPredictions() async {
+    if (predictionsError case final error?) throw error;
+    return predictions;
+  }
+
+  @override
+  Future<LectioCategoryAnalytics> loadCategoryAnalytics() async {
+    if (analyticsError case final error?) throw error;
+    return analytics;
+  }
 }
 
 class _AuthResponseClient extends http.BaseClient {

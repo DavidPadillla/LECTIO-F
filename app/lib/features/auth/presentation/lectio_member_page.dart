@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../data/lectio_auth_service.dart';
+import '../../analytics/data/lectio_ai_service.dart';
+import '../../analytics/presentation/lectio_ai_insights.dart';
 import '../../challenges/presentation/desafio.dart';
 import '../../reservations/data/reservas_service.dart';
 import '../../reservations/presentation/reservas.dart';
@@ -23,12 +25,14 @@ class LectioMemberPage extends StatefulWidget {
     this.authService,
     this.reservationService,
     this.virtualBooksService,
+    this.lectioAiDataSource,
   });
 
   final AuthSession session;
   final LectioAuthService? authService;
   final ReservaDataSource? reservationService;
   final LibrosVirtualesDataSource? virtualBooksService;
+  final LectioAiDataSource? lectioAiDataSource;
 
   @override
   State<LectioMemberPage> createState() => _LectioMemberPageState();
@@ -212,6 +216,9 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
             ),
           ),
           SliverToBoxAdapter(
+            child: LectioAiInsights(dataSource: widget.lectioAiDataSource),
+          ),
+          SliverToBoxAdapter(
             child: _MemberCollection(
               key: _collectionKey,
               books: _books,
@@ -315,12 +322,6 @@ class _MemberNavigation extends StatelessWidget {
                     switch (value) {
                       case 'Inicio':
                         onHome();
-                      case 'Colección':
-                        onCollection();
-                      case 'Autores':
-                        onAuthors();
-                      case 'Ayuda':
-                        onHelp();
                       case 'Libros Virtuales':
                         onVirtualBooks();
                       case 'Reserva':
@@ -333,9 +334,6 @@ class _MemberNavigation extends StatelessWidget {
                   },
                   itemBuilder: (context) => const [
                     PopupMenuItem(value: 'Inicio', child: Text('Inicio')),
-                    PopupMenuItem(value: 'Colección', child: Text('Colección')),
-                    PopupMenuItem(value: 'Autores', child: Text('Autores')),
-                    PopupMenuItem(value: 'Ayuda', child: Text('Ayuda')),
                     PopupMenuItem(
                       value: 'Libros Virtuales',
                       child: Text('Libros Virtuales'),
