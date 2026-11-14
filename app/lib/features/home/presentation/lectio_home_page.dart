@@ -8,13 +8,20 @@ import 'package:video_player/video_player.dart';
 
 import '../../auth/presentation/lectio_auth_page.dart';
 import 'lectio_hero_media.dart';
+import '../../offline/data/connection_probe.dart';
+import '../../offline/presentation/offline_page.dart';
 
 const _contentWidth = 1320.0;
 
 class LectioHomePage extends StatefulWidget {
-  const LectioHomePage({super.key, this.enableVideo = true});
+  const LectioHomePage({
+    super.key,
+    this.enableVideo = true,
+    this.connectionCheck,
+  });
 
   final bool enableVideo;
+  final Future<bool> Function()? connectionCheck;
 
   @override
   State<LectioHomePage> createState() => _LectioHomePageState();
@@ -26,6 +33,67 @@ class _LectioHomePageState extends State<LectioHomePage> {
   final _collectionKey = GlobalKey();
   final _authorsKey = GlobalKey();
   final _helpKey = GlobalKey();
+  bool _checkingConnection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_checkConnection());
+    });
+  }
+
+  void _openOffline() {
+    Navigator.of(context).push<void>(
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => const OfflinePage(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+    );
+  }
+
+  Future<void> _checkConnection() async {
+    if (_checkingConnection) return;
+    _checkingConnection = true;
+    bool connected;
+    try {
+      connected = await (widget.connectionCheck ?? hasInternetConnection)();
+    } catch (_) {
+      connected = false;
+    }
+    _checkingConnection = false;
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (connected) {
+      return;
+    }
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('No pudimos conectar a internet'),
+        content: const Text(
+          'Puedes disfrutar de lecturas y actividades incluidas en Lectio, sin internet ni cuenta.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'later'),
+            child: const Text('Ahora no'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'retry'),
+            child: const Text('Reintentar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'offline'),
+            child: const Text('Entrar sin conexión'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'offline') _openOffline();
+    if (action == 'retry') unawaited(_checkConnection());
+  }
 
   static const _books = [
     _Book(
@@ -164,6 +232,11 @@ class _LectioHomePageState extends State<LectioHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openOffline,
+        icon: const Icon(Icons.offline_bolt_outlined),
+        label: const Text('Sin conexión'),
+      ),
       body: DefaultTextStyle(
         style: GoogleFonts.inter(),
         child: CustomScrollView(

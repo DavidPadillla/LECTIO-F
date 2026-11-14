@@ -86,7 +86,12 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(home: LectioHomePage(enableVideo: false)),
+      MaterialApp(
+        home: LectioHomePage(
+          enableVideo: false,
+          connectionCheck: () async => true,
+        ),
+      ),
     );
 
     await tester.tap(find.byTooltip('Abrir navegación'));
@@ -787,6 +792,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LectioHomePage), findsOneWidget);
+    // Widget tests have no internet: dismiss the new offline entry prompt.
+    await tester.tap(find.text('Ahora no'));
+    await tester.pumpAndSettle();
     expect(find.text('Preparando tu biblioteca'), findsNothing);
     expect(find.textContaining('Explora nuestra'), findsOneWidget);
     expect(find.text('REC · 001'), findsNothing);
