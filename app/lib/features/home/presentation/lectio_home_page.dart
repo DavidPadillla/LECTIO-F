@@ -1,3 +1,5 @@
+import '../../profile/data/local_profile_store.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,10 +9,6 @@ import 'package:video_player/video_player.dart';
 import '../../auth/presentation/lectio_auth_page.dart';
 import 'lectio_hero_media.dart';
 
-const _lectioGreen = Color(0xFF27AE60);
-const _lectioGreenDark = Color(0xFF219150);
-const _lectioNavy = Color(0xFF2C3E50);
-const _lectioBackground = Color(0xFFF5F6FA);
 const _contentWidth = 1320.0;
 
 class LectioHomePage extends StatefulWidget {
@@ -109,7 +107,9 @@ class _LectioHomePageState extends State<LectioHomePage> {
     if (target == null) return;
     Scrollable.ensureVisible(
       target,
-      duration: const Duration(milliseconds: 550),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 550),
       curve: Curves.easeInOutCubic,
       alignment: .02,
     );
@@ -129,8 +129,12 @@ class _LectioHomePageState extends State<LectioHomePage> {
       PageRouteBuilder<void>(
         pageBuilder: (context, animation, secondaryAnimation) =>
             const LectioAuthPage(),
-        transitionDuration: const Duration(milliseconds: 600),
-        reverseTransitionDuration: const Duration(milliseconds: 400),
+        transitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 600),
+        reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 400),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final transition = CurvedAnimation(
             parent: animation,
@@ -159,7 +163,7 @@ class _LectioHomePageState extends State<LectioHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _lectioBackground,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: DefaultTextStyle(
         style: GoogleFonts.inter(),
         child: CustomScrollView(
@@ -169,7 +173,7 @@ class _LectioHomePageState extends State<LectioHomePage> {
               pinned: true,
               elevation: 0,
               scrolledUnderElevation: 1,
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.surface,
               toolbarHeight: 76,
               titleSpacing: 0,
               title: _ConstrainedContent(
@@ -244,7 +248,7 @@ class _NavigationBar extends StatelessWidget {
               InkWell(
                 onTap: onHome,
                 borderRadius: BorderRadius.circular(12),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _LectioMark(size: 42),
@@ -256,7 +260,7 @@ class _NavigationBar extends StatelessWidget {
                         Text(
                           'Lectio',
                           style: TextStyle(
-                            color: _lectioNavy,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                             height: 1.05,
@@ -265,7 +269,7 @@ class _NavigationBar extends StatelessWidget {
                         Text(
                           'BIBLIOTECA',
                           style: TextStyle(
-                            color: _lectioGreenDark,
+                            color: Theme.of(context).colorScheme.primary,
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.6,
@@ -280,7 +284,10 @@ class _NavigationBar extends StatelessWidget {
               if (compact)
                 PopupMenuButton<String>(
                   tooltip: 'Abrir navegación',
-                  icon: const Icon(Icons.menu_rounded, color: _lectioNavy),
+                  icon: Icon(
+                    Icons.menu_rounded,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   onSelected: (value) {
                     switch (value) {
                       case 'Inicio':
@@ -322,8 +329,8 @@ class _NavigationBar extends StatelessWidget {
                 FilledButton(
                   onPressed: onLogin,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _lectioGreen,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 13,
@@ -354,7 +361,7 @@ class _NavLink extends StatelessWidget {
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        foregroundColor: _lectioNavy,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         padding: const EdgeInsets.symmetric(horizontal: 10),
       ),
       child: Text(
@@ -388,7 +395,24 @@ class _HeroSectionState extends State<_HeroSection> {
   @override
   void initState() {
     super.initState();
-    if (widget.enableVideo) unawaited(_attachVideo());
+    LocalProfileStore.instance.addListener(_mediaPreferencesChanged);
+    if (widget.enableVideo && LocalProfileStore.instance.profile.video) {
+      unawaited(_attachVideo());
+    }
+  }
+
+  void _mediaPreferencesChanged() {
+    if (!mounted) return;
+    if (LocalProfileStore.instance.profile.video && widget.enableVideo) {
+      if (_video == null) {
+        unawaited(_attachVideo());
+      } else {
+        unawaited(_video!.play());
+      }
+    } else {
+      unawaited(_video?.pause());
+    }
+    setState(() {});
   }
 
   Future<void> _attachVideo() async {
@@ -410,6 +434,7 @@ class _HeroSectionState extends State<_HeroSection> {
 
   @override
   void dispose() {
+    LocalProfileStore.instance.removeListener(_mediaPreferencesChanged);
     _video?.removeListener(_onVideoTick);
     unawaited(_video?.pause());
     super.dispose();
@@ -432,10 +457,12 @@ class _HeroSectionState extends State<_HeroSection> {
                 errorBuilder: (context, error, stackTrace) =>
                     const ColoredBox(color: Color(0xFF163B2A)),
               ),
-              if (_video != null)
+              if (_video != null && LocalProfileStore.instance.profile.video)
                 AnimatedOpacity(
                   opacity: _showVideo ? 1 : 0,
-                  duration: const Duration(milliseconds: 600),
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 600),
                   curve: Curves.easeOut,
                   child: ClipRect(
                     child: FittedBox(
@@ -576,8 +603,8 @@ class _HeroCopy extends StatelessWidget {
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
               label: const Text('Explorar Colección'),
               style: FilledButton.styleFrom(
-                backgroundColor: _lectioGreen,
-                foregroundColor: Colors.white,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 21,
                   vertical: 16,
@@ -590,8 +617,8 @@ class _HeroCopy extends StatelessWidget {
               icon: const Icon(Icons.arrow_forward_rounded, size: 17),
               label: const Text('Ver Autores'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: _lectioGreenDark,
-                backgroundColor: Colors.white,
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: Theme.of(context).colorScheme.surface,
                 side: const BorderSide(color: Colors.white),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 21,
@@ -708,7 +735,7 @@ class _Ticker extends StatelessWidget {
       'ACCESO 24/7',
     ];
     return Container(
-      color: const Color(0xFFE6F3EB),
+      color: Theme.of(context).colorScheme.secondaryContainer,
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -730,10 +757,12 @@ class _Ticker extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 18),
-                      const SizedBox(
+                      SizedBox(
                         width: 7,
                         height: 7,
-                        child: ColoredBox(color: _lectioGreen),
+                        child: ColoredBox(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ],
                   ),
@@ -758,7 +787,7 @@ class _CollectionSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _lectioBackground,
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 76),
       child: _ConstrainedContent(
         child: Column(
@@ -809,8 +838,8 @@ class _BookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
             color: Color(0x102C3E50),
@@ -910,7 +939,7 @@ class _BookCard extends StatelessWidget {
                 Text(
                   book.description,
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF6B8377),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     height: 1.55,
                   ),
@@ -935,7 +964,7 @@ class _BookCard extends StatelessWidget {
                       icon: const Icon(Icons.arrow_forward_rounded, size: 15),
                       label: const Text('Leer'),
                       style: TextButton.styleFrom(
-                        foregroundColor: _lectioGreenDark,
+                        foregroundColor: Theme.of(context).colorScheme.primary,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         textStyle: GoogleFonts.jetBrainsMono(
                           fontSize: 10,
@@ -978,8 +1007,8 @@ class _BookTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: _lectioGreen,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
         borderRadius: BorderRadius.zero,
       ),
       child: Padding(
@@ -1005,7 +1034,7 @@ class _AuthorsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 76),
       child: _ConstrainedContent(
         child: Column(
@@ -1039,8 +1068,12 @@ class _AuthorCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: const Border(bottom: BorderSide(color: Color(0xFFD4E5D9))),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -1048,12 +1081,12 @@ class _AuthorCard extends StatelessWidget {
             width: 52,
             child: Row(
               children: [
-                const _PulsingDot(color: _lectioGreen),
+                _PulsingDot(color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 9),
                 Text(
                   number.toString().padLeft(2, '0'),
                   style: GoogleFonts.jetBrainsMono(
-                    color: _lectioGreenDark,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 10,
                   ),
                 ),
@@ -1065,7 +1098,7 @@ class _AuthorCard extends StatelessWidget {
             child: Text(
               author.name,
               style: GoogleFonts.instrumentSerif(
-                color: const Color(0xFF0D2B1D),
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 26,
                 height: 1.05,
               ),
@@ -1078,7 +1111,7 @@ class _AuthorCard extends StatelessWidget {
                 Text(
                   author.role.toUpperCase(),
                   style: GoogleFonts.jetBrainsMono(
-                    color: _lectioGreenDark,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 9,
                     letterSpacing: .8,
                   ),
@@ -1087,7 +1120,7 @@ class _AuthorCard extends StatelessWidget {
                 Text(
                   author.detail,
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF6B8377),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     height: 1.5,
                   ),
@@ -1113,7 +1146,7 @@ class _StatsSection extends StatelessWidget {
       ('04', '15+', 'Años de trayectoria'),
     ];
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       child: _ConstrainedContent(
         child: LayoutBuilder(
@@ -1128,7 +1161,7 @@ class _StatsSection extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: Container(
-                      color: _lectioBackground,
+                      color: Theme.of(context).colorScheme.surface,
                       padding: const EdgeInsets.all(22),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1138,12 +1171,14 @@ class _StatsSection extends StatelessWidget {
                               Text(
                                 stat.$1,
                                 style: GoogleFonts.jetBrainsMono(
-                                  color: _lectioGreenDark,
+                                  color: Theme.of(context).colorScheme.primary,
                                   fontSize: 9,
                                 ),
                               ),
                               const Spacer(),
-                              const _PulsingDot(color: _lectioGreen),
+                              _PulsingDot(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 20),
@@ -1158,7 +1193,9 @@ class _StatsSection extends StatelessWidget {
                           Text(
                             stat.$3.toUpperCase(),
                             style: GoogleFonts.jetBrainsMono(
-                              color: const Color(0xFF6B8377),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               fontSize: 9,
                               letterSpacing: .6,
                             ),
@@ -1182,7 +1219,7 @@ class _HelpSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _lectioBackground,
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 76),
       child: _ConstrainedContent(
         child: Column(
@@ -1253,7 +1290,7 @@ class _HelpCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 150),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
@@ -1266,12 +1303,12 @@ class _HelpCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: _lectioGreen, size: 25),
+          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 25),
           const SizedBox(height: 14),
           Text(
             title,
-            style: const TextStyle(
-              color: _lectioNavy,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w800,
               fontSize: 15,
             ),
@@ -1295,7 +1332,7 @@ class _SubscribeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFE6F3EB),
+      color: Theme.of(context).colorScheme.secondaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 55),
       child: _ConstrainedContent(
         child: LayoutBuilder(
@@ -1311,14 +1348,14 @@ class _SubscribeSection extends StatelessWidget {
                       TextSpan(
                         text: 'novedades.',
                         style: GoogleFonts.instrumentSerif(
-                          color: _lectioGreenDark,
+                          color: Theme.of(context).colorScheme.primary,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
                     ],
                   ),
                   style: GoogleFonts.instrumentSerif(
-                    color: const Color(0xFF0D2B1D),
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 38,
                   ),
                 ),
@@ -1334,20 +1371,24 @@ class _SubscribeSection extends StatelessWidget {
             );
             final form = Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: TextField(
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       hintText: 'tu@correo.com',
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: Theme.of(context).colorScheme.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: Color(0xFFBCD8C6)),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: Color(0xFFBCD8C6)),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                     ),
                   ),
@@ -1356,8 +1397,8 @@ class _SubscribeSection extends StatelessWidget {
                 FilledButton(
                   onPressed: onSubscribe,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _lectioGreenDark,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 19,
@@ -1393,7 +1434,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _lectioNavy,
+      color: const Color(0xFF10261C),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
       child: _ConstrainedContent(
         child: LayoutBuilder(
@@ -1466,7 +1507,7 @@ class _SectionHeading extends StatelessWidget {
           title,
           textAlign: TextAlign.left,
           style: GoogleFonts.instrumentSerif(
-            color: const Color(0xFF0D2B1D),
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: compact ? 36 : 44,
             height: 1,
             letterSpacing: -1,
@@ -1479,7 +1520,7 @@ class _SectionHeading extends StatelessWidget {
             description,
             textAlign: TextAlign.left,
             style: GoogleFonts.inter(
-              color: const Color(0xFF6B8377),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 14,
               height: 1.65,
             ),
@@ -1501,7 +1542,7 @@ class _SectionHeading extends StatelessWidget {
                 Text(
                   label.toUpperCase(),
                   style: GoogleFonts.jetBrainsMono(
-                    color: _lectioGreenDark,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 1.3,
@@ -1526,7 +1567,11 @@ class _SectionHeading extends StatelessWidget {
               Expanded(
                 child: Align(
                   alignment: Alignment.bottomRight,
-                  child: Container(width: 7, height: 7, color: _lectioGreen),
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
           ],
@@ -1536,8 +1581,12 @@ class _SectionHeading extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.only(bottom: 28),
           margin: const EdgeInsets.only(bottom: 44),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0xFFD4E5D9))),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
           ),
           child: compact
               ? Column(
@@ -1573,12 +1622,12 @@ class _LectioMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: _lectioGreen.withValues(alpha: .12),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(size * .28),
       ),
       child: Icon(
         Icons.menu_book_rounded,
-        color: _lectioGreenDark,
+        color: Theme.of(context).colorScheme.primary,
         size: size * .58,
       ),
     );

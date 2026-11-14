@@ -13,6 +13,12 @@ import 'package:app/features/auth/data/biometric_session_store.dart';
 import 'package:app/features/auth/data/lectio_auth_service.dart';
 import 'package:app/features/auth/presentation/lectio_auth_page.dart';
 import 'package:app/features/auth/presentation/lectio_member_page.dart';
+import 'package:app/features/profile/data/local_profile_store.dart';
+import 'package:app/features/notifications/data/lectio_notifications.dart';
+
+import 'notification_test_support.dart';
+import 'local_profile_store_test.dart' show MemoryProfileStorage;
+
 import 'package:app/features/challenges/presentation/desafio.dart';
 import 'package:app/features/home/presentation/lectio_home_page.dart';
 import 'package:app/features/reservations/data/reservas_service.dart';
@@ -276,7 +282,15 @@ void main() {
   testWidgets('challenge lists books and keeps history of thought visible', (
     tester,
   ) async {
-    final source = _FakeChallengeDataSource();
+    final source = _FakeChallengeDataSource(
+      progress: const ChallengeProgress(
+        points: 240,
+        totalBooksRead: 1,
+        chaptersByBook: {
+          '1984': {1, 2},
+        },
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: LectioChallengePage(
@@ -289,6 +303,8 @@ void main() {
 
     expect(find.text('El Principito'), findsOneWidget);
     expect(find.text('1984'), findsOneWidget);
+    expect(find.text('240 puntos'), findsOneWidget);
+    expect(find.text('1 de 3 libros completados'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Harry Potter'),
       200,
@@ -524,6 +540,16 @@ void main() {
       backendUri: Uri.parse('https://example.test'),
     );
     addTearDown(logoutService.close);
+    final notificationGateway = FakeNotificationGateway();
+    final profileStore = LocalProfileStore(
+      storage: MemoryProfileStorage(),
+      notifications: LectioNotifications(gateway: notificationGateway),
+    );
+    await profileStore.openUser('lector');
+    await profileStore.update((p) {
+      p.notifications.enabled = true;
+      p.notifications.reminder = true;
+    });
     final loginClient = _AuthResponseClient(
       statusCode: 302,
       headers: {
@@ -559,6 +585,7 @@ void main() {
                           cookie: 'JSESSIONID=current-session',
                         ),
                         authService: logoutService,
+                        profileStore: profileStore,
                       ),
                     ),
                   ),
@@ -584,6 +611,7 @@ void main() {
 
     await tester.tap(find.text('Abrir sesión autenticada'));
     await tester.pumpAndSettle();
+    expect(notificationGateway.scheduled, isNotEmpty);
     await tester.tap(find.byTooltip('Abrir navegación'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cerrar sesión').last);
@@ -592,6 +620,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Página pública'), findsOneWidget);
+    expect(notificationGateway.scheduled, isEmpty);
     expect(biometricStore.credentials?.username, 'lector');
 
     await tester.tap(find.text('Abrir login'));
@@ -940,11 +969,13 @@ class _FakeLectioAiDataSource implements LectioAiDataSource {
 }
 
 class _FakeChallengeDataSource implements ChallengeDataSource {
-  final Map<String, Set<int>> progress = {};
+  _FakeChallengeDataSource({this.progress = const ChallengeProgress()});
+
+  ChallengeProgress progress;
   final List<(String, int, int)> savedChapters = [];
 
   @override
-  Future<Map<String, Set<int>>> loadProgress() async => progress;
+  Future<ChallengeProgress> loadProgress() async => progress;
 
   @override
   Future<void> saveChapter({
@@ -953,11 +984,22 @@ class _FakeChallengeDataSource implements ChallengeDataSource {
     required int totalChapters,
   }) async {
     savedChapters.add((bookId, chapter, totalChapters));
-    progress.putIfAbsent(bookId, () => <int>{}).add(chapter);
+    final chapters = {
+      for (final entry in progress.chaptersByBook.entries)
+        entry.key: {...entry.value},
+    };
+    chapters.putIfAbsent(bookId, () => <int>{}).add(chapter);
+    progress = ChallengeProgress(
+      chaptersByBook: chapters,
+      points: progress.points,
+      totalBooksRead: progress.totalBooksRead,
+    );
   }
 
   @override
-  Future<void> resetProgress() async => progress.clear();
+  Future<void> resetProgress() async {
+    progress = const ChallengeProgress();
+  }
 }
 
 class _AuthResponseClient extends http.BaseClient {

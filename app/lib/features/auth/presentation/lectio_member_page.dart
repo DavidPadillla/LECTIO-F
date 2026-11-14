@@ -1,3 +1,8 @@
+import '../../profile/presentation/member_appearance.dart';
+import '../../notifications/data/lectio_notifications.dart';
+import '../../profile/data/local_profile_store.dart';
+import '../../profile/presentation/profile_pages.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -10,12 +15,6 @@ import '../../reservations/presentation/reservas.dart';
 import '../../virtual_books/data/libros_service.dart';
 import '../../virtual_books/presentation/libros.dart';
 
-const _ink = Color(0xFF0D2B1D);
-const _inkSoft = Color(0xFF2D4A3A);
-const _muted = Color(0xFF6B8377);
-const _line = Color(0xFFD4E5D9);
-const _green = Color(0xFF1A6B45);
-const _paper = Color(0xFFF7FAF8);
 const _contentWidth = 1240.0;
 
 class LectioMemberPage extends StatefulWidget {
@@ -26,6 +25,7 @@ class LectioMemberPage extends StatefulWidget {
     this.reservationService,
     this.virtualBooksService,
     this.lectioAiDataSource,
+    this.profileStore,
   });
 
   final AuthSession session;
@@ -33,12 +33,14 @@ class LectioMemberPage extends StatefulWidget {
   final ReservaDataSource? reservationService;
   final LibrosVirtualesDataSource? virtualBooksService;
   final LectioAiDataSource? lectioAiDataSource;
+  final LocalProfileStore? profileStore;
 
   @override
   State<LectioMemberPage> createState() => _LectioMemberPageState();
 }
 
-class _LectioMemberPageState extends State<LectioMemberPage> {
+class _LectioMemberPageState extends State<LectioMemberPage>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _collectionKey = GlobalKey();
   final _authorsKey = GlobalKey();
@@ -47,6 +49,32 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
   late final LectioAuthService _authService =
       widget.authService ?? LectioAuthService();
   bool _isLoggingOut = false;
+  late final _profileStore = widget.profileStore ?? LocalProfileStore.instance;
+  bool _profileReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    await _profileStore.openUser(widget.session.username);
+    if (!mounted) return;
+    await _profileStore.activateNotifications();
+    if (mounted) setState(() => _profileReady = true);
+  }
+
+  Future<void> _openLocalPage(int page) async {
+    if (!_profileReady) await _loadProfile();
+    if (!mounted) return;
+    _openPage(switch (page) {
+      0 => ProfilePage(store: _profileStore),
+      1 => SettingsPage(store: _profileStore),
+      _ => PersonalLibraryPage(store: _profileStore),
+    });
+  }
 
   static const _books = [
     _MemberBook(
@@ -95,9 +123,17 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     if (_ownsAuthService) _authService.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _profileReady && !_isLoggingOut) {
+      _profileStore.refreshNotifications();
+    }
   }
 
   void _goTo(GlobalKey key) {
@@ -105,7 +141,9 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
     if (target == null) return;
     Scrollable.ensureVisible(
       target,
-      duration: const Duration(milliseconds: 550),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 550),
       curve: Curves.easeInOutCubic,
       alignment: .02,
     );
@@ -123,41 +161,19 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
   }
 
   void _openPage(Widget page) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (context) => page));
-  }
-
-  Future<void> _openProfile() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Perfil'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CircleAvatar(
-              backgroundColor: Color(0xFFE6F3EB),
-              child: Icon(Icons.person_outline_rounded, color: _green),
-            ),
-            const SizedBox(height: 16),
-            const Text('Usuario'),
-            const SizedBox(height: 4),
-            Text(
-              widget.session.username,
-              style: const TextStyle(color: _ink, fontWeight: FontWeight.w700),
-            ),
-          ],
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (context, _, _) => MemberAppearance(
+          store: _profileStore,
+          builder: (context, _) => page,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
       ),
     );
   }
+
+  void _openProfile() => _openLocalPage(0);
 
   Future<void> _confirmLogout() async {
     if (_isLoggingOut) return;
@@ -185,10 +201,13 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
 
     setState(() => _isLoggingOut = true);
     try {
+      if (!_profileReady) await _loadProfile();
+      await _profileStore.deactivateNotifications();
       await _authService.logout(session: widget.session);
       if (!mounted) return;
       Navigator.of(context).pop();
     } on AuthException catch (error) {
+      await _profileStore.activateNotifications();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -196,6 +215,11 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } on NotificationException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     } finally {
       if (mounted) setState(() => _isLoggingOut = false);
     }
@@ -203,77 +227,89 @@ class _LectioMemberPageState extends State<LectioMemberPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _paper,
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            toolbarHeight: 76,
-            elevation: 0,
-            backgroundColor: Colors.white,
-            automaticallyImplyLeading: false,
-            titleSpacing: 0,
-            title: _MemberNavigation(
-              username: widget.session.username,
-              onProfile: _openProfile,
-              onCollection: () => _goTo(_collectionKey),
-              onAuthors: () => _goTo(_authorsKey),
-              onHelp: () => _goTo(_helpKey),
-              onVirtualBooks: () => _openPage(
-                LectioVirtualBooksPage(
-                  session: widget.session,
-                  service: widget.virtualBooksService,
+    return MemberAppearance(
+      store: _profileStore,
+      builder: (context, _) {
+        final profile = _profileReady ? _profileStore.profile : LocalProfile();
+        final displayName = profile.hideName
+            ? 'lector'
+            : widget.session.username;
+        return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          body: CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                toolbarHeight: 76,
+                elevation: 0,
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                automaticallyImplyLeading: false,
+                titleSpacing: 0,
+                title: _MemberNavigation(
+                  username: displayName,
+                  onProfile: _openProfile,
+                  onSettings: () => _openLocalPage(1),
+                  onLibrary: () => _openLocalPage(2),
+                  onCollection: () => _goTo(_collectionKey),
+                  onAuthors: () => _goTo(_authorsKey),
+                  onHelp: () => _goTo(_helpKey),
+                  onVirtualBooks: () => _openPage(
+                    LectioVirtualBooksPage(
+                      session: widget.session,
+                      service: widget.virtualBooksService,
+                      profileStore: _profileStore,
+                    ),
+                  ),
+                  onReservations: () => _openPage(
+                    LectioReservationsPage(
+                      session: widget.session,
+                      service: widget.reservationService,
+                      profileStore: _profileStore,
+                    ),
+                  ),
+                  onChallenge: () =>
+                      _openPage(LectioChallengePage(session: widget.session)),
+                  onLogout: _confirmLogout,
+                  loggingOut: _isLoggingOut,
                 ),
               ),
-              onReservations: () => _openPage(
-                LectioReservationsPage(
-                  session: widget.session,
-                  service: widget.reservationService,
+              SliverToBoxAdapter(
+                child: _MemberHero(
+                  username: displayName,
+                  onProfile: _openProfile,
+                  onExplore: () => _goTo(_collectionKey),
                 ),
               ),
-              onChallenge: () =>
-                  _openPage(LectioChallengePage(session: widget.session)),
-              onLogout: _confirmLogout,
-              loggingOut: _isLoggingOut,
-            ),
+              SliverToBoxAdapter(
+                child: LectioAiInsights(dataSource: widget.lectioAiDataSource),
+              ),
+              SliverToBoxAdapter(
+                child: _MemberCollection(
+                  key: _collectionKey,
+                  books: _books,
+                  onRead: () => _showUnavailable('La lectura de libros'),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _MemberAuthors(key: _authorsKey, authors: _authors),
+              ),
+              SliverToBoxAdapter(
+                child: _MemberHelp(
+                  key: _helpKey,
+                  onAssistant: () => _showUnavailable('El asistente Lectio'),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _MemberReview(
+                  onSubmit: () => _showUnavailable('El envío de reseñas'),
+                ),
+              ),
+              const SliverToBoxAdapter(child: _MemberFooter()),
+            ],
           ),
-          SliverToBoxAdapter(
-            child: _MemberHero(
-              username: widget.session.username,
-              onProfile: () =>
-                  _showUnavailable('El formulario de preferencias'),
-              onExplore: () => _goTo(_collectionKey),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: LectioAiInsights(dataSource: widget.lectioAiDataSource),
-          ),
-          SliverToBoxAdapter(
-            child: _MemberCollection(
-              key: _collectionKey,
-              books: _books,
-              onRead: () => _showUnavailable('La lectura de libros'),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: _MemberAuthors(key: _authorsKey, authors: _authors),
-          ),
-          SliverToBoxAdapter(
-            child: _MemberHelp(
-              key: _helpKey,
-              onAssistant: () => _showUnavailable('El asistente Lectio'),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: _MemberReview(
-              onSubmit: () => _showUnavailable('El envío de reseñas'),
-            ),
-          ),
-          const SliverToBoxAdapter(child: _MemberFooter()),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -282,6 +318,8 @@ class _MemberNavigation extends StatelessWidget {
   const _MemberNavigation({
     required this.username,
     required this.onProfile,
+    required this.onSettings,
+    required this.onLibrary,
     required this.onCollection,
     required this.onAuthors,
     required this.onHelp,
@@ -294,6 +332,8 @@ class _MemberNavigation extends StatelessWidget {
 
   final String username;
   final VoidCallback onProfile;
+  final VoidCallback onSettings;
+  final VoidCallback onLibrary;
   final VoidCallback onCollection;
   final VoidCallback onAuthors;
   final VoidCallback onHelp;
@@ -315,7 +355,11 @@ class _MemberNavigation extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.auto_stories, color: _green, size: 30),
+                  Icon(
+                    Icons.auto_stories,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 30,
+                  ),
                   const SizedBox(width: 9),
                   Column(
                     mainAxisSize: MainAxisSize.min,
@@ -326,13 +370,13 @@ class _MemberNavigation extends StatelessWidget {
                         style: GoogleFonts.instrumentSerif(
                           fontSize: 24,
                           height: 1,
-                          color: _ink,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       Text(
                         'BIBLIOTECA',
                         style: GoogleFonts.jetBrainsMono(
-                          color: _green,
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 8,
                           letterSpacing: 1.4,
                         ),
@@ -343,11 +387,35 @@ class _MemberNavigation extends StatelessWidget {
               ),
               const Spacer(),
               if (compact)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: TextButton(
+                    onPressed: onProfile,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth * .34,
+                      ),
+                      child: Text(
+                        username,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+              if (compact)
                 PopupMenuButton<String>(
                   tooltip: 'Abrir navegación',
-                  icon: const Icon(Icons.menu_rounded, color: _ink),
+                  icon: Icon(
+                    Icons.menu_rounded,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   onSelected: (value) {
                     switch (value) {
+                      case 'Configuración':
+                        onSettings();
+                      case 'Mi biblioteca':
+                        onLibrary();
                       case 'Perfil':
                         onProfile();
                       case 'Libros Virtuales':
@@ -363,6 +431,14 @@ class _MemberNavigation extends StatelessWidget {
                   itemBuilder: (context) => const [
                     PopupMenuItem(value: 'Perfil', child: Text('Perfil')),
                     PopupMenuItem(
+                      value: 'Mi biblioteca',
+                      child: Text('Mi biblioteca'),
+                    ),
+                    PopupMenuItem(
+                      value: 'Configuración',
+                      child: Text('Configuración'),
+                    ),
+                    PopupMenuItem(
                       value: 'Libros Virtuales',
                       child: Text('Libros Virtuales'),
                     ),
@@ -375,6 +451,16 @@ class _MemberNavigation extends StatelessWidget {
                   ],
                 )
               else ...[
+                IconButton(
+                  tooltip: 'Mi biblioteca',
+                  onPressed: onLibrary,
+                  icon: const Icon(Icons.library_books_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Configuración',
+                  onPressed: onSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                ),
                 _MemberNavLink(label: 'Colección', onTap: onCollection),
                 _MemberNavLink(label: 'Autores', onTap: onAuthors),
                 _MemberNavLink(label: 'Ayuda', onTap: onHelp),
@@ -385,18 +471,14 @@ class _MemberNavigation extends StatelessWidget {
                 _MemberNavLink(label: 'Reserva', onTap: onReservations),
                 _MemberNavLink(label: 'Desafío', onTap: onChallenge),
                 const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Perfil de $username',
+                TextButton(
                   onPressed: onProfile,
-                  icon: CircleAvatar(
-                    radius: 17,
-                    backgroundColor: const Color(0xFFE6F3EB),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
                     child: Text(
-                      username.isEmpty ? '?' : username[0].toUpperCase(),
-                      style: const TextStyle(
-                        color: _green,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -410,7 +492,9 @@ class _MemberNavigation extends StatelessWidget {
                         )
                       : const Icon(Icons.logout_rounded, size: 17),
                   label: const Text('Salir'),
-                  style: TextButton.styleFrom(foregroundColor: _green),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ],
             ],
@@ -432,7 +516,7 @@ class _MemberNavLink extends StatelessWidget {
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        foregroundColor: _inkSoft,
+        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
         padding: const EdgeInsets.symmetric(horizontal: 9),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
@@ -650,7 +734,7 @@ class _MemberCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _MemberSection(
-      background: _paper,
+      background: Theme.of(context).colorScheme.surface,
       eyebrow: 'CATÁLOGO · 01',
       title: 'Nuestra colección.',
       description: 'Encuentra los mejores libros seleccionados para ti, disponibles al instante.',
@@ -690,8 +774,8 @@ class _MemberBookCard extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -741,13 +825,16 @@ class _MemberBookCard extends StatelessWidget {
               children: [
                 Text(
                   book.title,
-                  style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 25),
+                  style: GoogleFonts.instrumentSerif(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 25,
+                  ),
                 ),
                 const SizedBox(height: 7),
                 Text(
                   book.description,
                   style: GoogleFonts.inter(
-                    color: _muted,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     height: 1.55,
                   ),
@@ -758,7 +845,7 @@ class _MemberBookCard extends StatelessWidget {
                   icon: const Icon(Icons.arrow_forward_rounded, size: 16),
                   label: const Text('Leer'),
                   style: TextButton.styleFrom(
-                    foregroundColor: _green,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
                     padding: EdgeInsets.zero,
                   ),
                 ),
@@ -779,7 +866,7 @@ class _MemberAuthors extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _MemberSection(
-      background: const Color(0xFFEEF7F1),
+      background: Theme.of(context).colorScheme.surfaceContainerLow,
       eyebrow: 'TALENTO · 02',
       title: 'Autores destacados.',
       description: 'Voces que han marcado generaciones enteras de lectores.',
@@ -815,8 +902,8 @@ class _MemberAuthorCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(23),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -837,19 +924,29 @@ class _MemberAuthorCard extends StatelessWidget {
               const Spacer(),
               Text(
                 index.toString().padLeft(2, '0'),
-                style: GoogleFonts.jetBrainsMono(color: _muted, fontSize: 11),
+                style: GoogleFonts.jetBrainsMono(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 23),
           Text(
             author.name,
-            style: GoogleFonts.instrumentSerif(fontSize: 25, color: _ink),
+            style: GoogleFonts.instrumentSerif(
+              fontSize: 25,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             author.description,
-            style: GoogleFonts.inter(color: _muted, fontSize: 13, height: 1.6),
+            style: GoogleFonts.inter(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.6,
+            ),
           ),
         ],
       ),
@@ -865,7 +962,7 @@ class _MemberHelp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _MemberSection(
-      background: _paper,
+      background: Theme.of(context).colorScheme.surface,
       eyebrow: 'SOPORTE · 03',
       title: 'Centro de ayuda.',
       description: '¿Tienes dudas? Estamos para ayudarte.',
@@ -875,7 +972,9 @@ class _MemberHelp extends StatelessWidget {
           onPressed: onAssistant,
           icon: const Icon(Icons.auto_awesome_rounded),
           label: const Text('Hablar con el asistente Lectio'),
-          style: OutlinedButton.styleFrom(foregroundColor: _green),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ),
       child: LayoutBuilder(
@@ -910,24 +1009,34 @@ class _MemberHelp extends StatelessWidget {
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      border: Border.all(color: _line),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(item.icon, color: _green),
+                        Icon(
+                          item.icon,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                         const SizedBox(height: 15),
                         Text(
                           item.title,
                           style: GoogleFonts.instrumentSerif(
                             fontSize: 23,
-                            color: _ink,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 5),
                         Text(
                           item.detail,
-                          style: GoogleFonts.inter(color: _muted, fontSize: 12),
+                          style: GoogleFonts.inter(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -949,7 +1058,7 @@ class _MemberReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _MemberSection(
-      background: const Color(0xFFEEF7F1),
+      background: Theme.of(context).colorScheme.surfaceContainerLow,
       eyebrow: 'OPINIÓN · 04',
       title: 'Deja tu reseña.',
       description:
@@ -958,7 +1067,9 @@ class _MemberReview extends StatelessWidget {
         padding: const EdgeInsets.only(top: 16),
         child: FilledButton(
           onPressed: onSubmit,
-          style: FilledButton.styleFrom(backgroundColor: _green),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
           child: const Text('Enviar reseña'),
         ),
       ),
@@ -971,13 +1082,17 @@ class _MemberReview extends StatelessWidget {
             labelText: 'Comentario',
             alignLabelWithHint: true,
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Theme.of(context).colorScheme.surface,
             border: OutlineInputBorder(
-              borderSide: const BorderSide(color: _line),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
               borderRadius: BorderRadius.circular(4),
             ),
             enabledBorder: OutlineInputBorder(
-              borderSide: const BorderSide(color: _line),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -1017,7 +1132,7 @@ class _MemberSection extends StatelessWidget {
               Text(
                 eyebrow,
                 style: GoogleFonts.jetBrainsMono(
-                  color: _green,
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 10,
                   letterSpacing: 1.2,
                 ),
@@ -1026,7 +1141,7 @@ class _MemberSection extends StatelessWidget {
               Text(
                 title,
                 style: GoogleFonts.instrumentSerif(
-                  color: _ink,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 42,
                   height: 1.05,
                 ),
@@ -1036,7 +1151,10 @@ class _MemberSection extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 610),
                 child: Text(
                   description,
-                  style: GoogleFonts.inter(color: _muted, height: 1.6),
+                  style: GoogleFonts.inter(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.6,
+                  ),
                 ),
               ),
               const SizedBox(height: 30),
@@ -1056,7 +1174,7 @@ class _MemberFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFF0D2B1D),
+      color: const Color(0xFF10261C),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: _ConstrainedMemberContent(

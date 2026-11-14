@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../home/presentation/lectio_hero_media.dart';
 import '../../home/presentation/lectio_home_page.dart';
+import '../../profile/data/local_profile_store.dart';
 
 const _ink = Color(0xFFF3F8F3);
 const _cream = Color(0xFFFFFFFF);
@@ -52,7 +53,9 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
       duration: const Duration(milliseconds: 540),
     );
     _game.addListener(_handleGameTick);
-    if (widget.enableHeroVideo) unawaited(LectioHeroMedia.preload());
+    if (widget.enableHeroVideo && LocalProfileStore.instance.profile.video) {
+      unawaited(LectioHeroMedia.preload());
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(
@@ -63,7 +66,9 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
         _finish();
         return;
       }
-      if (widget.enableMusic) unawaited(_startMusic());
+      if (widget.enableMusic && LocalProfileStore.instance.profile.music) {
+        unawaited(_startMusic());
+      }
       _game.forward().whenComplete(_finish);
     });
   }
@@ -169,7 +174,7 @@ class _LectioLibraryIntroState extends State<LectioLibraryIntro>
   }
 
   Future<void> _goHome() async {
-    if (widget.enableHeroVideo) {
+    if (widget.enableHeroVideo && LocalProfileStore.instance.profile.video) {
       await LectioHeroMedia.preload().timeout(
         const Duration(milliseconds: 1500),
         onTimeout: () => null,

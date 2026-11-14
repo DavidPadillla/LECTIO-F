@@ -6,14 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../data/lectio_ai_service.dart';
 
-const _ink = Color(0xFF0D2B1D);
-const _inkSoft = Color(0xFF2D4A3A);
-const _muted = Color(0xFF6B8377);
-const _line = Color(0xFFD4E5D9);
-const _green = Color(0xFF1A6B45);
-const _greenBright = Color(0xFF34A06C);
-const _paper = Color(0xFFF7FAF8);
-
 class LectioAiInsights extends StatefulWidget {
   const LectioAiInsights({super.key, this.dataSource});
 
@@ -56,7 +48,7 @@ class _LectioAiInsightsState extends State<LectioAiInsights> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _paper,
+      color: Theme.of(context).colorScheme.surface,
       width: double.infinity,
       child: Center(
         child: ConstrainedBox(
@@ -68,12 +60,15 @@ class _LectioAiInsightsState extends State<LectioAiInsights> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.auto_awesome, color: _green),
+                    Icon(
+                      Icons.auto_awesome,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 10),
                     Text(
                       'LECTIO-AI',
                       style: GoogleFonts.jetBrainsMono(
-                        color: _green,
+                        color: Theme.of(context).colorScheme.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.5,
@@ -84,14 +79,17 @@ class _LectioAiInsightsState extends State<LectioAiInsights> {
                       tooltip: 'Actualizar información predictiva',
                       onPressed: _refresh,
                       icon: const Icon(Icons.refresh_rounded),
-                      color: _green,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Decisiones con datos.',
-                  style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 38),
+                  style: GoogleFonts.instrumentSerif(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 38,
+                  ),
                 ),
                 const SizedBox(height: 26),
                 _SectionHeading(
@@ -170,10 +168,14 @@ class _LectioAiInsightsState extends State<LectioAiInsights> {
                   },
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Las predicciones son estimaciones, se actualizan periódicamente '
                   'y no garantizan la demanda futura.',
-                  style: TextStyle(color: _muted, fontSize: 12, height: 1.5),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -204,10 +206,10 @@ class _SectionHeading extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFFE6F3EB),
+            color: Theme.of(context).colorScheme.secondaryContainer,
             borderRadius: BorderRadius.circular(11),
           ),
-          child: Icon(icon, color: _green),
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -217,7 +219,7 @@ class _SectionHeading extends StatelessWidget {
               Text(
                 title,
                 style: GoogleFonts.instrumentSerif(
-                  color: _ink,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 25,
                   height: 1.15,
                 ),
@@ -225,8 +227,8 @@ class _SectionHeading extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: _muted,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   height: 1.4,
                 ),
@@ -251,8 +253,8 @@ class _PredictionList extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -290,7 +292,13 @@ class _PredictionRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       decoration: BoxDecoration(
-        border: isLast ? null : const Border(bottom: BorderSide(color: _line)),
+        border: isLast
+            ? null
+            : Border(
+                bottom: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
       ),
       child: Row(
         children: [
@@ -299,13 +307,17 @@ class _PredictionRow extends StatelessWidget {
             child: Text(
               rank.toString().padLeft(2, '0'),
               style: GoogleFonts.jetBrainsMono(
-                color: _green,
+                color: Theme.of(context).colorScheme.primary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          const Icon(Icons.menu_book_outlined, color: _green, size: 20),
+          Icon(
+            Icons.menu_book_outlined,
+            color: Theme.of(context).colorScheme.primary,
+            size: 20,
+          ),
           const SizedBox(width: 13),
           Expanded(
             child: Column(
@@ -317,8 +329,8 @@ class _PredictionRow extends StatelessWidget {
                       : 'Título no disponible',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _ink,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -328,13 +340,22 @@ class _PredictionRow extends StatelessWidget {
                   prediction.category?.isNotEmpty == true
                       ? prediction.category!
                       : 'Categoría no disponible',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Text(horizon, style: const TextStyle(color: _muted, fontSize: 11)),
+          Text(
+            horizon,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+            ),
+          ),
         ],
       ),
     );
@@ -350,16 +371,19 @@ class _AnalyticsAccordion extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: _line),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
           Material(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             child: ExpansionTile(
               key: const ValueKey('category-demand-accordion'),
-              leading: const Icon(Icons.radar_rounded, color: _green),
+              leading: Icon(
+                Icons.radar_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('Demanda histórica por categoría'),
               subtitle: const Text('Comparación entre categorías'),
               childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -373,12 +397,18 @@ class _AnalyticsAccordion extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: _line),
+          Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           Material(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             child: ExpansionTile(
               key: const ValueKey('monthly-demand-accordion'),
-              leading: const Icon(Icons.show_chart_rounded, color: _green),
+              leading: Icon(
+                Icons.show_chart_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('Demanda histórica por mes'),
               subtitle: const Text('Evolución mensual registrada'),
               childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -412,8 +442,8 @@ class _CategoryRadar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -421,8 +451,8 @@ class _CategoryRadar extends StatelessWidget {
           Text(
             period,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _muted,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -435,11 +465,14 @@ class _CategoryRadar extends StatelessWidget {
               label:
                   'Gráfica radar de demanda histórica. ${analytics.categories.map((item) => '${item.category}: ${_formatDemand(item.demand)}').join('; ')}',
               child: analytics.categories.length < 3
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         'Se necesitan al menos tres categorías para mostrar la gráfica radar.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: _muted, fontSize: 12),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
                       ),
                     )
                   : RadarChart(
@@ -449,32 +482,33 @@ class _CategoryRadar extends StatelessWidget {
                             dataEntries: analytics.categories
                                 .map((item) => RadarEntry(value: item.demand))
                                 .toList(growable: false),
-                            fillColor: _greenBright.withValues(alpha: .18),
-                            borderColor: _green,
+                            fillColor: Theme.of(context).colorScheme.primary
+                                .withValues(alpha: .18),
+                            borderColor: Theme.of(context).colorScheme.primary,
                             borderWidth: 2,
                             entryRadius: 3,
                           ),
                         ],
                         radarBackgroundColor: Colors.transparent,
-                        radarBorderData: const BorderSide(
-                          color: _line,
+                        radarBorderData: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
                           width: 1,
                         ),
-                        gridBorderData: const BorderSide(
-                          color: _line,
+                        gridBorderData: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
                           width: 1,
                         ),
-                        tickBorderData: const BorderSide(
-                          color: _line,
+                        tickBorderData: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
                           width: 1,
                         ),
                         tickCount: 4,
-                        ticksTextStyle: const TextStyle(
-                          color: _muted,
+                        ticksTextStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 9,
                         ),
-                        titleTextStyle: const TextStyle(
-                          color: _inkSoft,
+                        titleTextStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
@@ -485,7 +519,9 @@ class _CategoryRadar extends StatelessWidget {
                         ),
                         radarTouchData: RadarTouchData(enabled: true),
                       ),
-                      duration: const Duration(milliseconds: 300),
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 300),
                       curve: Curves.easeInOut,
                     ),
             ),
@@ -502,14 +538,16 @@ class _CategoryRadar extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: _paper,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _line),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
                 child: Text(
                   '${item.category} · ${_formatDemand(item.demand)}',
-                  style: const TextStyle(
-                    color: _inkSoft,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -518,11 +556,15 @@ class _CategoryRadar extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'La gráfica compara la demanda histórica reportada por categoría; '
             'no representa una predicción futura.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -551,16 +593,16 @@ class _MonthlyDemandChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Demanda registrada por mes',
             style: TextStyle(
-              color: _inkSoft,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -581,8 +623,10 @@ class _MonthlyDemandChart extends StatelessWidget {
                     show: true,
                     drawVerticalLine: false,
                     horizontalInterval: chartMaxY / 4,
-                    getDrawingHorizontalLine: (_) =>
-                        const FlLine(color: _line, strokeWidth: 1),
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                      strokeWidth: 1,
+                    ),
                   ),
                   titlesData: FlTitlesData(
                     topTitles: const AxisTitles(
@@ -600,7 +644,12 @@ class _MonthlyDemandChart extends StatelessWidget {
                           meta: meta,
                           child: Text(
                             _formatDemand(value),
-                            style: const TextStyle(color: _muted, fontSize: 9),
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 9,
+                            ),
                           ),
                         ),
                       ),
@@ -623,8 +672,10 @@ class _MonthlyDemandChart extends StatelessWidget {
                             space: 6,
                             child: Text(
                               _shortMonth(orderedMonths[index].month),
-                              style: const TextStyle(
-                                color: _muted,
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                                 fontSize: 9,
                               ),
                             ),
@@ -635,9 +686,13 @@ class _MonthlyDemandChart extends StatelessWidget {
                   ),
                   borderData: FlBorderData(
                     show: true,
-                    border: const Border(
-                      bottom: BorderSide(color: _line),
-                      left: BorderSide(color: _line),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                      left: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
                   ),
                   lineTouchData: const LineTouchData(enabled: true),
@@ -651,7 +706,7 @@ class _MonthlyDemandChart extends StatelessWidget {
                         )
                           FlSpot(index.toDouble(), orderedMonths[index].demand),
                       ],
-                      color: _green,
+                      color: Theme.of(context).colorScheme.primary,
                       barWidth: 2.5,
                       isCurved: true,
                       isStrokeCapRound: true,
@@ -659,20 +714,27 @@ class _MonthlyDemandChart extends StatelessWidget {
                       dotData: const FlDotData(show: true),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: _greenBright.withValues(alpha: .12),
+                        color: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: .12),
                       ),
                     ),
                   ],
                 ),
-                duration: const Duration(milliseconds: 300),
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
               ),
             ),
           ),
-          const Text(
+          Text(
             'Los valores muestran la demanda histórica reportada cada mes.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -696,18 +758,26 @@ class _InsightLoading extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const SizedBox.square(
+          SizedBox.square(
             dimension: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
           const SizedBox(width: 14),
-          Text(label, style: const TextStyle(color: _muted)),
+          Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -725,7 +795,7 @@ class _InsightError extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: const Color(0xFFF0D5D5)),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -736,14 +806,17 @@ class _InsightError extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: _inkSoft, height: 1.4),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
             ),
           ),
           IconButton(
             tooltip: 'Reintentar',
             onPressed: onRetry,
             icon: const Icon(Icons.refresh_rounded),
-            color: _green,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ],
       ),
@@ -761,18 +834,24 @@ class _InsightEmpty extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: _line),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const Icon(Icons.hourglass_empty_rounded, color: _muted),
+          Icon(
+            Icons.hourglass_empty_rounded,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: _inkSoft, height: 1.4),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
             ),
           ),
         ],

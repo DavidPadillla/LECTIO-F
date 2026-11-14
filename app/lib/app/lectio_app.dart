@@ -23,6 +23,7 @@ class LectioApp extends StatelessWidget {
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      themeMode: ThemeMode.light,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF27AE60),

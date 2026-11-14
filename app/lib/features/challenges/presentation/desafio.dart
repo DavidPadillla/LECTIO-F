@@ -1,18 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:confetti/confetti.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 import '../../auth/data/lectio_auth_service.dart';
 
-const _ink = Color(0xFF0D2B1D);
-const _muted = Color(0xFF6B8377);
-const _green = Color(0xFF1A6B45);
-const _line = Color(0xFFD4E5D9);
-const _paper = Color(0xFFF7FAF8);
 const _defaultBackendUri = 'https://lectio-biblioteca.onrender.com';
 
 @immutable
@@ -80,7 +77,7 @@ const _books = [
 ];
 
 abstract interface class ChallengeDataSource {
-  Future<Map<String, Set<int>>> loadProgress();
+  Future<ChallengeProgress> loadProgress();
 
   Future<void> saveChapter({
     required String bookId,
@@ -89,6 +86,19 @@ abstract interface class ChallengeDataSource {
   });
 
   Future<void> resetProgress();
+}
+
+@immutable
+class ChallengeProgress {
+  const ChallengeProgress({
+    this.chaptersByBook = const {},
+    this.points,
+    this.totalBooksRead,
+  });
+
+  final Map<String, Set<int>> chaptersByBook;
+  final int? points;
+  final int? totalBooksRead;
 }
 
 class ChallengeService implements ChallengeDataSource {
@@ -148,7 +158,7 @@ class ChallengeService implements ChallengeDataSource {
   }
 
   @override
-  Future<Map<String, Set<int>>> loadProgress() async {
+  Future<ChallengeProgress> loadProgress() async {
     final response = await _request('GET', '/api/progreso/mi-progreso');
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
@@ -166,7 +176,12 @@ class ChallengeService implements ChallengeDataSource {
         );
       }
     }
-    if (raw == null) return const {};
+    if (raw == null) {
+      return ChallengeProgress(
+        points: _optionalInt(decoded['puntos']),
+        totalBooksRead: _optionalInt(decoded['totalLibrosLeidos']),
+      );
+    }
     if (raw is! Map) {
       throw const ChallengeException(
         'El servidor devolvió un progreso inválido.',
@@ -189,7 +204,11 @@ class ChallengeService implements ChallengeDataSource {
             .toSet();
       }
     }
-    return progress;
+    return ChallengeProgress(
+      chaptersByBook: progress,
+      points: _optionalInt(decoded['puntos']),
+      totalBooksRead: _optionalInt(decoded['totalLibrosLeidos']),
+    );
   }
 
   @override
@@ -219,6 +238,8 @@ class ChallengeService implements ChallengeDataSource {
   }
 }
 
+int? _optionalInt(Object? value) => value is num ? value.toInt() : null;
+
 class ChallengeException implements Exception {
   const ChallengeException(this.message);
 
@@ -247,7 +268,7 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
       ? ChallengeService(session: widget.session)
       : null;
   late final ChallengeDataSource _service = widget.dataSource ?? _ownedService!;
-  late Future<Map<String, Set<int>>> _progressFuture;
+  late Future<ChallengeProgress> _progressFuture;
 
   @override
   void initState() {
@@ -306,11 +327,11 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _paper,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('Desafío de lectura'),
-        backgroundColor: Colors.white,
-        foregroundColor: _ink,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         actions: [
           IconButton(
             tooltip: 'Actualizar progreso',
@@ -324,7 +345,7 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
           ),
         ],
       ),
-      body: FutureBuilder<Map<String, Set<int>>>(
+      body: FutureBuilder<ChallengeProgress>(
         future: _progressFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -337,10 +358,10 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.cloud_off_outlined,
                       size: 44,
-                      color: _muted,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -361,7 +382,7 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
             );
           }
           return _ChallengeHome(
-            progress: snapshot.data ?? const {},
+            progress: snapshot.data ?? const ChallengeProgress(),
             onSelect: _openBook,
           );
         },
@@ -389,16 +410,21 @@ class _LectioChallengePageState extends State<LectioChallengePage> {
 class _ChallengeHome extends StatelessWidget {
   const _ChallengeHome({required this.progress, required this.onSelect});
 
-  final Map<String, Set<int>> progress;
+  final ChallengeProgress progress;
   final void Function(ChallengeBook book, Set<int> completed) onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final completedBooks = _books
-        .where(
-          (book) => (progress[book.id]?.length ?? 0) >= book.chapters.length,
-        )
-        .length;
+    final chaptersByBook = progress.chaptersByBook;
+    final completedBooks =
+        progress.totalBooksRead ??
+        _books
+            .where(
+              (book) =>
+                  (chaptersByBook[book.id]?.length ?? 0) >=
+                  book.chapters.length,
+            )
+            .length;
     return ListView(
       padding: const EdgeInsets.all(22),
       children: [
@@ -406,51 +432,86 @@ class _ChallengeHome extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: Colors.white,
-            border: Border.all(color: _line),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.auto_stories_rounded, color: _green, size: 34),
+              Icon(
+                Icons.auto_stories_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 34,
+              ),
               const SizedBox(height: 10),
               Text(
                 'Tu camino de lectura',
-                style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 32),
+                style: GoogleFonts.instrumentSerif(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 32,
+                ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Elige un libro y avanza capítulo a capítulo. Tu progreso se guarda en tu cuenta.',
-                style: TextStyle(color: _muted, height: 1.5),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 18),
               Text(
                 '$completedBooks de ${_books.length} libros completados',
-                style: const TextStyle(
-                  color: _green,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (progress.points != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.stars_rounded, color: Color(0xFFE5A923)),
+                    const SizedBox(width: 7),
+                    Text(
+                      '${progress.points} puntos',
+                      key: const ValueKey('challenge-points'),
+                      style: const TextStyle(
+                        color: Color(0xFF8A5A00),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
         const SizedBox(height: 24),
         Text(
           'Elige un desafío',
-          style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 27),
+          style: GoogleFonts.instrumentSerif(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: 27,
+          ),
         ),
         const SizedBox(height: 12),
         for (final book in _books)
           _ChallengeBookCard(
             book: book,
-            completed: progress[book.id] ?? const {},
-            onTap: () => onSelect(book, progress[book.id] ?? const {}),
+            completed: chaptersByBook[book.id] ?? const {},
+            onTap: () => onSelect(book, chaptersByBook[book.id] ?? const {}),
           ),
         const SizedBox(height: 18),
         Card(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           child: ListTile(
-            leading: const Icon(Icons.lightbulb_outline, color: _green),
+            leading: Icon(
+              Icons.lightbulb_outline,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             title: const Text('Historia del pensamiento'),
             subtitle: const Text('Conserva este acceso para explorar ideas.'),
             onTap: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -482,11 +543,11 @@ class _ChallengeBookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ratio = completed.length / book.chapters.length;
     return Card(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: _line),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
@@ -497,7 +558,10 @@ class _ChallengeBookCard extends StatelessWidget {
             style: TextStyle(color: book.accent, fontSize: 22),
           ),
         ),
-        title: Text(book.title, style: const TextStyle(color: _ink)),
+        title: Text(
+          book.title,
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(
@@ -507,15 +571,18 @@ class _ChallengeBookCard extends StatelessWidget {
               const SizedBox(height: 10),
               LinearProgressIndicator(
                 value: ratio,
-                color: _green,
-                backgroundColor: _line,
+                color: Theme.of(context).colorScheme.primary,
+                backgroundColor: Theme.of(context).colorScheme.outlineVariant,
               ),
               const SizedBox(height: 5),
               Text('${completed.length} de ${book.chapters.length} capítulos'),
             ],
           ),
         ),
-        trailing: const Icon(Icons.chevron_right, color: _muted),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         onTap: onTap,
       ),
     );
@@ -539,7 +606,16 @@ class _ChallengeBookPage extends StatefulWidget {
 
 class _ChallengeBookPageState extends State<_ChallengeBookPage> {
   late final Set<int> _completed = {...widget.initialCompleted};
+  late final ConfettiController _confettiController = ConfettiController(
+    duration: const Duration(seconds: 2),
+  );
   int? _savingChapter;
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    super.dispose();
+  }
 
   Future<void> _readChapter(int index) async {
     final chapterNumber = index + 1;
@@ -552,10 +628,10 @@ class _ChallengeBookPageState extends State<_ChallengeBookPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'RELATO ORIGINAL',
                 style: TextStyle(
-                  color: _green,
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
@@ -597,6 +673,9 @@ class _ChallengeBookPageState extends State<_ChallengeBookPage> {
         _completed.add(chapterNumber);
         _savingChapter = null;
       });
+      if (_completed.length == widget.book.chapters.length) {
+        _confettiController.play();
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -618,71 +697,124 @@ class _ChallengeBookPageState extends State<_ChallengeBookPage> {
   Widget build(BuildContext context) {
     final progress = _completed.length / widget.book.chapters.length;
     return Scaffold(
-      backgroundColor: _paper,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: Text(widget.book.title),
-        backgroundColor: Colors.white,
-        foregroundColor: _ink,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(22),
+      body: Stack(
+        alignment: Alignment.topCenter,
         children: [
-          Container(
+          ListView(
             padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: _line),
-            ),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 34,
-                  backgroundColor: widget.book.accent.withValues(alpha: .12),
-                  child: Text(
-                    widget.book.icon,
-                    style: TextStyle(color: widget.book.accent, fontSize: 30),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  widget.book.title,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 30),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: widget.book.accent.withValues(
+                        alpha: .12,
+                      ),
+                      child: Text(
+                        widget.book.icon,
+                        style: TextStyle(
+                          color: widget.book.accent,
+                          fontSize: 30,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.book.title,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.instrumentSerif(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 30,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_completed.length} de ${widget.book.chapters.length} capítulos leídos',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: progress,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_completed.length} de ${widget.book.chapters.length} capítulos leídos',
-                  style: const TextStyle(color: _muted),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: Text(
+                  'TU CAMINO DE LECTURA',
+                  style: GoogleFonts.jetBrainsMono(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(value: progress, color: _green),
+              ),
+              const SizedBox(height: 12),
+              for (
+                var index = 0;
+                index < widget.book.chapters.length;
+                index++
+              ) ...[
+                _chapterNode(index)
+                    .animate()
+                    .fadeIn(duration: 350.ms, delay: (index * 100).ms)
+                    .slideY(
+                      begin: .18,
+                      end: 0,
+                      duration: 350.ms,
+                      delay: (index * 100).ms,
+                      curve: Curves.easeOutCubic,
+                    ),
+                if (index < widget.book.chapters.length - 1)
+                  _chapterConnector(index),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                'Añade aquí textos propios o con licencia para acompañar cada capítulo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          IgnorePointer(
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              shouldLoop: false,
+              numberOfParticles: 24,
+              maxBlastForce: 22,
+              minBlastForce: 8,
+              gravity: .18,
+              colors: [
+                widget.book.accent,
+                Theme.of(context).colorScheme.primary,
+                const Color(0xFFE5A923),
+                const Color(0xFF74B98A),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          Center(
-            child: Text(
-              'TU CAMINO DE LECTURA',
-              style: GoogleFonts.jetBrainsMono(
-                color: _muted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (var index = 0; index < widget.book.chapters.length; index++) ...[
-            _chapterNode(index),
-            if (index < widget.book.chapters.length - 1)
-              _chapterConnector(index),
-          ],
-          const SizedBox(height: 16),
-          const Text(
-            'Añade aquí textos propios o con licencia para acompañar cada capítulo.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: _muted, fontSize: 12),
           ),
         ],
       ),
@@ -701,114 +833,150 @@ class _ChallengeBookPageState extends State<_ChallengeBookPage> {
       _ => -20.0,
     };
     return Transform.translate(
-      offset: Offset(offset, 0),
-      child: Column(
-        children: [
-          Semantics(
-            button: true,
-            enabled: unlocked && !saving,
-            label: isRead
-                ? 'Capítulo $number, leído'
-                : unlocked
-                ? 'Leer capítulo $number'
-                : 'Capítulo $number bloqueado',
-            child: Tooltip(
-              message: isRead
-                  ? 'Capítulo $number completado'
-                  : unlocked
-                  ? 'Leer capítulo $number'
-                  : 'Completa el capítulo anterior',
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: unlocked && !saving ? () => _readChapter(index) : null,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  width: isRead ? 78 : 70,
-                  height: isRead ? 78 : 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isRead
-                        ? _green
-                        : unlocked
-                        ? widget.book.accent
-                        : const Color(0xFFE5EAE7),
-                    border: Border.all(
-                      color: isRead
-                          ? const Color(0xFF8DC9A5)
-                          : unlocked
-                          ? Colors.white
-                          : _line,
-                      width: 4,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            (isRead
-                                    ? _green
-                                    : unlocked
-                                    ? widget.book.accent
-                                    : Colors.black)
-                                .withValues(alpha: unlocked ? .22 : .06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: saving
-                        ? const SizedBox.square(
-                            dimension: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(
-                            isRead
-                                ? Icons.check_rounded
-                                : unlocked
-                                ? Icons.menu_book_rounded
-                                : Icons.lock_rounded,
-                            color: unlocked || isRead ? Colors.white : _muted,
-                            size: 27,
+          offset: Offset(offset, 0),
+          child: Column(
+            children: [
+              Semantics(
+                button: true,
+                enabled: unlocked && !saving,
+                label: isRead
+                    ? 'Capítulo $number, leído'
+                    : unlocked
+                    ? 'Leer capítulo $number'
+                    : 'Capítulo $number bloqueado',
+                child: Tooltip(
+                  message: isRead
+                      ? 'Capítulo $number completado'
+                      : unlocked
+                      ? 'Leer capítulo $number'
+                      : 'Completa el capítulo anterior',
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: unlocked && !saving
+                        ? () => _readChapter(index)
+                        : null,
+                    child: AnimatedContainer(
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
+                      width: isRead ? 78 : 70,
+                      height: isRead ? 78 : 70,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isRead
+                            ? Theme.of(context).colorScheme.primary
+                            : unlocked
+                            ? widget.book.accent
+                            : const Color(0xFFE5EAE7),
+                        border: Border.all(
+                          color: isRead
+                              ? const Color(0xFF8DC9A5)
+                              : unlocked
+                              ? Colors.white
+                              : Theme.of(context).colorScheme.outlineVariant,
+                          width: 4,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                (isRead
+                                        ? Theme.of(context).colorScheme.primary
+                                        : unlocked
+                                        ? widget.book.accent
+                                        : Colors.black)
+                                    .withValues(alpha: unlocked ? .22 : .06),
+                            blurRadius: 12,
+                            offset: const Offset(0, 5),
                           ),
+                        ],
+                      ),
+                      child: Center(
+                        child: saving
+                            ? const SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(
+                                isRead
+                                    ? Icons.check_rounded
+                                    : unlocked
+                                    ? Icons.menu_book_rounded
+                                    : Icons.lock_rounded,
+                                color: unlocked || isRead
+                                    ? Colors.white
+                                    : Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                size: 27,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(height: 7),
+              Text(
+                'Capítulo $number',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                isRead
+                    ? 'Completado'
+                    : unlocked
+                    ? 'Toca para leer'
+                    : 'Bloqueado',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 7),
-          Text(
-            'Capítulo $number',
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            isRead
-                ? 'Completado'
-                : unlocked
-                ? 'Toca para leer'
-                : 'Bloqueado',
-            style: const TextStyle(color: _muted, fontSize: 11),
-          ),
-        ],
-      ),
-    );
+        )
+        .animate(target: unlocked && !isRead ? 1 : 0)
+        .scale(
+          begin: const Offset(1, 1),
+          end: const Offset(1.055, 1.055),
+          duration: 900.ms,
+          curve: Curves.easeInOut,
+        )
+        .then()
+        .scale(
+          begin: const Offset(1.055, 1.055),
+          end: const Offset(1, 1),
+          duration: 900.ms,
+          curve: Curves.easeInOut,
+        );
   }
 
   Widget _chapterConnector(int index) {
     final nextUnlocked = _completed.contains(index + 1);
-    return Container(
-      width: 5,
-      height: 28,
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      decoration: BoxDecoration(
-        color: nextUnlocked ? _green : _line,
-        borderRadius: BorderRadius.circular(4),
+    const offsets = [-34.0, 20.0, 34.0, -20.0];
+    final horizontalOffset =
+        (offsets[index % offsets.length] +
+            offsets[(index + 1) % offsets.length]) /
+        2;
+    return Transform.translate(
+      offset: Offset(horizontalOffset, 0),
+      child: AnimatedContainer(
+        duration: 300.ms,
+        width: 5,
+        height: 32,
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        decoration: BoxDecoration(
+          color: nextUnlocked
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.outlineVariant,
+          borderRadius: BorderRadius.circular(4),
+        ),
       ),
     );
   }

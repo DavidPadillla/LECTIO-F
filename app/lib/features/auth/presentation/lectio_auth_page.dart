@@ -57,6 +57,15 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     )..forward();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entrance.stop();
+      _entrance.value = 1;
+    }
+  }
+
   Future<void> _loadBiometricStatus() async {
     try {
       final available = await _biometricSessionStore.isAvailable();
@@ -328,11 +337,13 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     await Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            LectioMemberPage(
-              session: session,
-            ),
-        transitionDuration: const Duration(milliseconds: 650),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
+            LectioMemberPage(session: session),
+        transitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 650),
+        reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final transition = CurvedAnimation(
             parent: animation,
@@ -356,7 +367,7 @@ class _LectioAuthPageState extends State<LectioAuthPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
           LayoutBuilder(
@@ -419,9 +430,9 @@ class _LectioAuthPageState extends State<LectioAuthPage>
   }
 
   Widget _buildFormPanel({required bool compact}) {
-    const ink = Color(0xFF0D2B1D);
-    const muted = Color(0xFF6B8377);
-    const line = Color(0xFFD4E5D9);
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final line = Theme.of(context).colorScheme.outlineVariant;
 
     final formContent = Padding(
       padding: EdgeInsets.symmetric(
@@ -447,7 +458,7 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.arrow_back, size: 15, color: muted),
+                          Icon(Icons.arrow_back, size: 15, color: muted),
                           const SizedBox(width: 9),
                           Text(
                             'VOLVER',
@@ -464,7 +475,9 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                 ),
                 SizedBox(height: compact ? 24 : 34),
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 560),
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 560),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
                   transitionBuilder: (child, animation) => FadeTransition(
@@ -562,7 +575,9 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                         ),
                       ),
                       AnimatedSize(
-                        duration: const Duration(milliseconds: 420),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 420),
                         curve: Curves.easeInOutCubic,
                         child: _isRegistering
                             ? Padding(
@@ -605,7 +620,9 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                         onPressed: _submit,
                       ),
                       AnimatedSize(
-                        duration: const Duration(milliseconds: 280),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 280),
                         curve: Curves.easeInOutCubic,
                         child: !_isRegistering && _biometricAvailable
                             ? Padding(
@@ -624,8 +641,10 @@ class _LectioAuthPageState extends State<LectioAuthPage>
                                   ),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: const Color(0xFF1A6B45),
-                                    side: const BorderSide(
-                                      color: Color(0xFFBCD8C6),
+                                    side: BorderSide(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant,
                                     ),
                                     minimumSize: const Size.fromHeight(48),
                                   ),
@@ -671,7 +690,7 @@ class _LectioAuthPageState extends State<LectioAuthPage>
     );
 
     return ColoredBox(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: compact ? formContent : SingleChildScrollView(child: formContent),
     );
   }
@@ -771,7 +790,9 @@ class _LectioBrandPanel extends StatelessWidget {
                   ],
                 ),
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 500),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
                   transitionBuilder: (child, animation) => FadeTransition(
@@ -862,7 +883,9 @@ class _FloatingSquare extends StatelessWidget {
       top: MediaQuery.sizeOf(context).height * top,
       child: TweenAnimationBuilder<Offset>(
         tween: Tween(begin: Offset.zero, end: offset),
-        duration: const Duration(milliseconds: 1200),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 1200),
         curve: Curves.easeOutCubic,
         builder: (context, position, child) =>
             Transform.translate(offset: position, child: child),
@@ -901,7 +924,9 @@ class _BrandSquareState extends State<_BrandSquare> {
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedRotation(
         turns: _hovered ? .125 : 0,
-        duration: const Duration(milliseconds: 350),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 350),
         curve: Curves.easeOutCubic,
         child: Container(
           width: 9,
@@ -938,10 +963,10 @@ class _AuthTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFF0D2B1D);
-    const muted = Color(0xFF6B8377);
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     const green = Color(0xFF34A06C);
-    const border = Color(0xFFD4E5D9);
+    final border = Theme.of(context).colorScheme.outlineVariant;
 
     return TextFormField(
       controller: controller,
@@ -962,13 +987,13 @@ class _AuthTextField extends StatelessWidget {
         prefixIcon: Icon(icon, color: muted, size: 19),
         suffixIcon: trailing,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Theme.of(context).colorScheme.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 17,
         ),
-        border: const OutlineInputBorder(borderSide: BorderSide(color: border)),
-        enabledBorder: const OutlineInputBorder(
+        border: OutlineInputBorder(borderSide: BorderSide(color: border)),
+        enabledBorder: OutlineInputBorder(
           borderSide: BorderSide(color: border),
         ),
         focusedBorder: const OutlineInputBorder(
@@ -1025,7 +1050,9 @@ class _AuthSubmitButtonState extends State<_AuthSubmitButton> {
           elevation: _hovered ? 6 : 0,
         ),
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
           child: widget.loading
               ? const SizedBox(
                   key: ValueKey('auth-loading'),
@@ -1051,7 +1078,9 @@ class _AuthSubmitButtonState extends State<_AuthSubmitButton> {
                     const SizedBox(width: 10),
                     AnimatedSlide(
                       offset: _hovered ? const Offset(.25, 0) : Offset.zero,
-                      duration: const Duration(milliseconds: 250),
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 250),
                       child: const Icon(Icons.arrow_forward, size: 16),
                     ),
                   ],
@@ -1115,13 +1144,17 @@ class _LectioSuccessOverlay extends StatelessWidget {
         ignoring: !visible,
         child: AnimatedOpacity(
           opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 400),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 400),
           child: ColoredBox(
             color: const Color(0xF5F7FAF8),
             child: Center(
               child: AnimatedScale(
                 scale: visible ? 1 : .92,
-                duration: const Duration(milliseconds: 600),
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 600),
                 curve: Curves.easeOutBack,
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -1133,7 +1166,9 @@ class _LectioSuccessOverlay extends StatelessWidget {
                         height: 94,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFFE6F3EB),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .secondaryContainer,
                           border: Border.all(
                             color: const Color(0xFF1A6B45),
                             width: 2,
@@ -1158,7 +1193,7 @@ class _LectioSuccessOverlay extends StatelessWidget {
                         title,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.instrumentSerif(
-                          color: const Color(0xFF0D2B1D),
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 38,
                         ),
                       ),
@@ -1167,7 +1202,7 @@ class _LectioSuccessOverlay extends StatelessWidget {
                         message,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.jetBrainsMono(
-                          color: const Color(0xFF6B8377),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 10,
                           letterSpacing: 1.1,
                         ),

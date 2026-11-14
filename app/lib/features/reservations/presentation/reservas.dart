@@ -1,15 +1,11 @@
+import '../../profile/data/local_profile_store.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../auth/data/lectio_auth_service.dart';
 import '../data/reservas_service.dart';
 
-const _ink = Color(0xFF0D2B1D);
-const _inkSoft = Color(0xFF2D4A3A);
-const _muted = Color(0xFF6B8377);
-const _line = Color(0xFFD4E5D9);
-const _green = Color(0xFF1A6B45);
-const _paper = Color(0xFFF7FAF8);
 const _categories = [
   'Novelas',
   'Ciencia',
@@ -25,10 +21,12 @@ class LectioReservationsPage extends StatefulWidget {
     super.key,
     required this.session,
     this.service,
+    this.profileStore,
   });
 
   final AuthSession session;
   final ReservaDataSource? service;
+  final LocalProfileStore? profileStore;
 
   @override
   State<LectioReservationsPage> createState() => _LectioReservationsPageState();
@@ -98,15 +96,18 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
       context: context,
       builder: (context) => _ReservationDialog(
         book: book,
-        onSubmit: ({required fullName, required email, required date}) =>
-            _service.createReservation(
-              bookId: book.id,
-              title: book.titulo,
-              category: book.categoria,
-              fullName: fullName,
-              email: email,
-              date: date,
-            ),
+        onSubmit: ({required fullName, required email, required date}) async {
+          await _service.createReservation(
+            bookId: book.id,
+            title: book.titulo,
+            category: book.categoria,
+            fullName: fullName,
+            email: email,
+            date: date,
+          );
+          await (widget.profileStore ?? LocalProfileStore.instance)
+              .notifyReservationConfirmed(widget.session.username);
+        },
       ),
     );
     if (reserved != true || !mounted) return;
@@ -134,29 +135,39 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
         .toList(growable: false);
 
     return Scaffold(
-      backgroundColor: _paper,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         titleSpacing: 22,
         title: Row(
           children: [
-            const Icon(Icons.auto_stories_rounded, color: _green),
+            Icon(
+              Icons.auto_stories_rounded,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(width: 10),
             Text(
               'LECTIO',
-              style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 25),
+              style: GoogleFonts.instrumentSerif(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 25,
+              ),
             ),
           ],
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: _ink,
-        surfaceTintColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        surfaceTintColor: Theme.of(context).colorScheme.surface,
       ),
       body: RefreshIndicator(
         onRefresh: _loadBooks,
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            _ReservationHero(username: widget.session.username),
+            _ReservationHero(
+              username: LocalProfileStore.instance.displayNameFor(
+                widget.session.username,
+              ),
+            ),
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1120),
@@ -173,6 +184,7 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
                                 initialValue: _selectedCategory,
                                 isExpanded: true,
                                 decoration: _inputDecoration(
+                                  context,
                                   label: 'Categoría',
                                   icon: Icons.category_outlined,
                                 ),
@@ -201,6 +213,7 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
                             }),
                             decoration:
                                 _inputDecoration(
+                                  context,
                                   label: 'Buscar libro por título o autor',
                                   icon: Icons.search_rounded,
                                 ).copyWith(
@@ -237,16 +250,22 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
                       ),
                       const SizedBox(height: 22),
                       if (_isLoading)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 90),
                           child: Center(
                             child: Column(
                               children: [
-                                CircularProgressIndicator(color: _green),
+                                CircularProgressIndicator(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
                                 SizedBox(height: 16),
                                 Text(
                                   'Cargando libros...',
-                                  style: TextStyle(color: _muted),
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
@@ -259,8 +278,10 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
                       else ...[
                         Text(
                           '${filteredBooks.length} ${filteredBooks.length == 1 ? 'libro disponible' : 'libros disponibles'}',
-                          style: const TextStyle(
-                            color: _muted,
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -276,7 +297,10 @@ class _LectioReservationsPageState extends State<LectioReservationsPage> {
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: columns,
-                                    mainAxisExtent: 270,
+                                    mainAxisExtent:
+                                        300 *
+                                        MediaQuery.textScalerOf(context)
+                                            .scale(1),
                                     crossAxisSpacing: 16,
                                     mainAxisSpacing: 16,
                                   ),
@@ -320,9 +344,13 @@ class _ReservationHero extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 34, 24, 34),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: _line)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Center(
         child: ConstrainedBox(
@@ -343,7 +371,7 @@ class _ReservationHero extends StatelessWidget {
                     Text(
                       'Reserva de',
                       style: GoogleFonts.instrumentSerif(
-                        color: _ink,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 42,
                         height: 1.05,
                       ),
@@ -351,7 +379,7 @@ class _ReservationHero extends StatelessWidget {
                     Text(
                       'libros físicos.',
                       style: GoogleFonts.instrumentSerif(
-                        color: _green,
+                        color: Theme.of(context).colorScheme.primary,
                         fontSize: 42,
                         fontStyle: FontStyle.italic,
                         height: 1.05,
@@ -360,7 +388,9 @@ class _ReservationHero extends StatelessWidget {
                     const SizedBox(height: 10),
                     Text(
                       'Hola, $username. Encuentra un libro y resérvalo.',
-                      style: const TextStyle(color: _muted),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -373,11 +403,13 @@ class _ReservationHero extends StatelessWidget {
                     vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: _paper,
-                    border: Border.all(color: _line),
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.circle, size: 9, color: Color(0xFF34A06C)),
@@ -385,7 +417,7 @@ class _ReservationHero extends StatelessWidget {
                       Text(
                         'CATÁLOGO ACTIVO',
                         style: TextStyle(
-                          color: _muted,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           letterSpacing: 1.1,
                           fontWeight: FontWeight.w700,
@@ -416,9 +448,9 @@ class _BookCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _line),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A0D2B1D),
@@ -432,7 +464,12 @@ class _BookCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.menu_book_rounded, color: available ? _green : _muted),
+              Icon(
+                Icons.menu_book_rounded,
+                color: available
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -444,7 +481,7 @@ class _BookCard extends StatelessWidget {
                       ? const Color(0xFFFBEAEA)
                       : lowStock
                       ? const Color(0xFFFFF3E0)
-                      : const Color(0xFFE6F3EB),
+                      : Theme.of(context).colorScheme.secondaryContainer,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -454,7 +491,7 @@ class _BookCard extends StatelessWidget {
                         ? const Color(0xFFC8464A)
                         : lowStock
                         ? const Color(0xFF9B651F)
-                        : _green,
+                        : Theme.of(context).colorScheme.primary,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -468,7 +505,7 @@ class _BookCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.instrumentSerif(
-              color: _ink,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 25,
               height: 1.05,
             ),
@@ -489,10 +526,14 @@ class _BookCard extends StatelessWidget {
               ),
               label: Text(available ? 'Reservar' : 'Sin disponibilidad'),
               style: FilledButton.styleFrom(
-                backgroundColor: _green,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFE8ECE9),
-                disabledForegroundColor: _muted,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                disabledBackgroundColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest,
+                disabledForegroundColor: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant,
                 padding: const EdgeInsets.symmetric(vertical: 13),
               ),
             ),
@@ -515,12 +556,15 @@ class _BookMetadata extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 5),
       child: Text.rich(
         TextSpan(
-          style: const TextStyle(color: _inkSoft, fontSize: 13),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
           children: [
             TextSpan(
               text: '$label  ',
-              style: const TextStyle(
-                color: _muted,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -539,20 +583,29 @@ class _EmptyBooks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 84),
       child: Column(
         children: [
-          Icon(Icons.menu_book_outlined, size: 52, color: _muted),
+          Icon(
+            Icons.menu_book_outlined,
+            size: 52,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           SizedBox(height: 14),
           Text(
             'No se encontraron libros',
-            style: TextStyle(color: _inkSoft, fontSize: 17),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 17,
+            ),
           ),
           SizedBox(height: 5),
           Text(
             'Prueba con otra búsqueda o categoría.',
-            style: TextStyle(color: _muted),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -616,7 +669,9 @@ class _Pagination extends StatelessWidget {
         ),
         Text(
           'Página $currentPage de $totalPages',
-          style: const TextStyle(color: _inkSoft),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         IconButton(
           tooltip: 'Página siguiente',
@@ -710,7 +765,10 @@ class _ReservationDialogState extends State<_ReservationDialog> {
     return AlertDialog(
       title: Text(
         'Reservar libro',
-        style: GoogleFonts.instrumentSerif(color: _ink, fontSize: 30),
+        style: GoogleFonts.instrumentSerif(
+          color: Theme.of(context).colorScheme.onSurface,
+          fontSize: 30,
+        ),
       ),
       content: SizedBox(
         width: 440,
@@ -724,13 +782,13 @@ class _ReservationDialogState extends State<_ReservationDialog> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _paper,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     widget.book.titulo,
-                    style: const TextStyle(
-                      color: _ink,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -740,6 +798,7 @@ class _ReservationDialogState extends State<_ReservationDialog> {
                   controller: _nameController,
                   textCapitalization: TextCapitalization.words,
                   decoration: _inputDecoration(
+                    context,
                     label: 'Nombre completo',
                     icon: Icons.person_outline_rounded,
                   ),
@@ -752,6 +811,7 @@ class _ReservationDialogState extends State<_ReservationDialog> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: _inputDecoration(
+                    context,
                     label: 'Correo electrónico',
                     icon: Icons.email_outlined,
                   ),
@@ -771,6 +831,7 @@ class _ReservationDialogState extends State<_ReservationDialog> {
                   borderRadius: BorderRadius.circular(8),
                   child: InputDecorator(
                     decoration: _inputDecoration(
+                      context,
                       label: 'Fecha de reserva',
                       icon: Icons.calendar_month_outlined,
                     ),
@@ -815,34 +876,47 @@ class _ReservationDialogState extends State<_ReservationDialog> {
                 )
               : const Icon(Icons.arrow_forward_rounded, size: 18),
           label: Text(_isSubmitting ? 'Enviando...' : 'Confirmar reserva'),
-          style: FilledButton.styleFrom(backgroundColor: _green),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ],
     );
   }
 }
 
-InputDecoration _inputDecoration({
+InputDecoration _inputDecoration(
+  BuildContext context, {
   required String label,
   required IconData icon,
 }) {
   return InputDecoration(
     labelText: label,
-    prefixIcon: Icon(icon, color: _muted),
+    prefixIcon: Icon(
+      icon,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    ),
     filled: true,
-    fillColor: Colors.white,
+    fillColor: Theme.of(context).colorScheme.surface,
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(color: _line),
+      borderSide: BorderSide(
+        color: Theme.of(context).colorScheme.outlineVariant,
+      ),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(color: _line),
+      borderSide: BorderSide(
+        color: Theme.of(context).colorScheme.outlineVariant,
+      ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(color: _green, width: 1.5),
+      borderSide: BorderSide(
+        color: Theme.of(context).colorScheme.primary,
+        width: 1.5,
+      ),
     ),
   );
 }
