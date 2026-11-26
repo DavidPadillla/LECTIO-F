@@ -270,6 +270,11 @@ class _LectioMemberPageState extends State<LectioMemberPage>
                   ),
                   onChallenge: () =>
                       _openPage(LectioChallengePage(session: widget.session)),
+                  onPredictions: () => _openPage(
+                    LectioPredictionsPage(
+                      dataSource: widget.lectioAiDataSource,
+                    ),
+                  ),
                   onLogout: _confirmLogout,
                   loggingOut: _isLoggingOut,
                 ),
@@ -280,9 +285,6 @@ class _LectioMemberPageState extends State<LectioMemberPage>
                   onProfile: _openProfile,
                   onExplore: () => _goTo(_collectionKey),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: LectioAiInsights(dataSource: widget.lectioAiDataSource),
               ),
               SliverToBoxAdapter(
                 child: _MemberCollection(
@@ -326,6 +328,7 @@ class _MemberNavigation extends StatelessWidget {
     required this.onVirtualBooks,
     required this.onReservations,
     required this.onChallenge,
+    required this.onPredictions,
     required this.onLogout,
     required this.loggingOut,
   });
@@ -340,6 +343,7 @@ class _MemberNavigation extends StatelessWidget {
   final VoidCallback onVirtualBooks;
   final VoidCallback onReservations;
   final VoidCallback onChallenge;
+  final VoidCallback onPredictions;
   final VoidCallback onLogout;
   final bool loggingOut;
 
@@ -424,6 +428,8 @@ class _MemberNavigation extends StatelessWidget {
                         onReservations();
                       case 'Desafío':
                         onChallenge();
+                      case 'Predicciones':
+                        onPredictions();
                       case 'Cerrar sesión':
                         onLogout();
                     }
@@ -444,6 +450,10 @@ class _MemberNavigation extends StatelessWidget {
                     ),
                     PopupMenuItem(value: 'Reserva', child: Text('Reserva')),
                     PopupMenuItem(value: 'Desafío', child: Text('Desafío')),
+                    PopupMenuItem(
+                      value: 'Predicciones',
+                      child: Text('Predicciones'),
+                    ),
                     PopupMenuItem(
                       value: 'Cerrar sesión',
                       child: Text('Cerrar sesión'),
@@ -470,6 +480,7 @@ class _MemberNavigation extends StatelessWidget {
                 ),
                 _MemberNavLink(label: 'Reserva', onTap: onReservations),
                 _MemberNavLink(label: 'Desafío', onTap: onChallenge),
+                _MemberNavLink(label: 'Predicciones', onTap: onPredictions),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: onProfile,

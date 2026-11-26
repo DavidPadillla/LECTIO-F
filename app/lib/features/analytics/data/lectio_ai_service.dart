@@ -21,6 +21,9 @@ class LectioPrediction {
     required this.category,
     required this.status,
     required this.demand30Days,
+    this.weeklyHistory = const [],
+    this.weeklyForecast = const [],
+    this.historicalDemand,
   });
 
   factory LectioPrediction.fromJson(Map<String, dynamic> json) {
@@ -37,6 +40,9 @@ class LectioPrediction {
       category: _optionalString(json['category']),
       status: _optionalString(json['status']),
       demand30Days: _optionalNumber(json['forecast_demand_30_days']),
+      weeklyHistory: _parseWeeklyHistory(json['weekly_history']),
+      weeklyForecast: _parseWeeklyForecast(json['weekly_forecast']),
+      historicalDemand: _optionalNumber(json['historical_demand']),
     );
   }
 
@@ -45,12 +51,76 @@ class LectioPrediction {
   final String? category;
   final String? status;
   final double? demand30Days;
+  final List<WeeklyDemand> weeklyHistory;
+  final List<WeeklyForecast> weeklyForecast;
+  final double? historicalDemand;
 
   bool get isAvailable =>
       status == 'PREDICCION_DISPONIBLE' &&
       demand30Days != null &&
       demand30Days!.isFinite &&
       demand30Days! >= 0;
+}
+
+class WeeklyDemand {
+  const WeeklyDemand({required this.periodStart, required this.demand});
+
+  final String periodStart;
+  final double demand;
+}
+
+class WeeklyForecast {
+  const WeeklyForecast({
+    required this.periodStart,
+    required this.daysCovered,
+    required this.predictedDemand,
+  });
+
+  final String periodStart;
+  final int? daysCovered;
+  final double predictedDemand;
+}
+
+List<WeeklyDemand> _parseWeeklyHistory(Object? value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map<String, dynamic>>()
+      .map((item) {
+        return WeeklyDemand(
+          periodStart: _optionalString(item['period_start']) ?? '',
+          demand: _optionalNumber(item['demand']) ?? double.nan,
+        );
+      })
+      .where(
+        (item) =>
+            item.periodStart.isNotEmpty &&
+            item.demand.isFinite &&
+            item.demand >= 0,
+      )
+      .toList(growable: false);
+}
+
+List<WeeklyForecast> _parseWeeklyForecast(Object? value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map<String, dynamic>>()
+      .map((item) {
+        final rawDays = item['days_covered'];
+        return WeeklyForecast(
+          periodStart: _optionalString(item['period_start']) ?? '',
+          daysCovered: rawDays is num ? rawDays.toInt() : null,
+          predictedDemand:
+              _optionalNumber(item['predicted_demand']) ?? double.nan,
+        );
+      })
+      .where(
+        (item) =>
+            item.periodStart.isNotEmpty &&
+            item.predictedDemand.isFinite &&
+            item.predictedDemand >= 0 &&
+            (item.daysCovered == null || item.daysCovered! > 0),
+      )
+      .toList(growable: false);
 }
 
 class LectioPredictions {
@@ -168,10 +238,140 @@ class LectioCategoryAnalytics {
   final String? periodEnd;
 }
 
+class LectioInventoryRecommendation {
+  const LectioInventoryRecommendation({
+    required this.bookId,
+    required this.category,
+    required this.risk,
+    required this.suggestedUnits,
+    this.title,
+    this.demand30Days,
+    this.availableStock,
+    this.reservedUnits,
+  });
+
+  factory LectioInventoryRecommendation.fromJson(Map<String, dynamic> json) {
+    Object? first(Iterable<String> keys) {
+      for (final key in keys) {
+        if (json[key] != null) return json[key];
+      }
+      return null;
+    }
+
+    final id = first(const [
+      'book_id',
+      'libro_id',
+      'id_book',
+      'libro_fisico_id',
+      'id',
+    ]);
+    final suggested = _optionalNumber(
+      first(const [
+        'recommended_replenishment',
+        'recommended_restock',
+        'restock_quantity',
+        'reorder_quantity',
+        'units_to_restock',
+        'replenishment',
+        'reorder',
+        'suggested_quantity',
+      ]),
+    );
+    return LectioInventoryRecommendation(
+      bookId: id?.toString() ?? '',
+      title: _optionalString(
+        first(const [
+          'titulo',
+          'title',
+          'libro',
+          'book_title',
+          'book_name',
+          'nombre_libro',
+          'name',
+        ]),
+      ),
+      category: _optionalString(first(const ['category', 'categoria'])),
+      demand30Days: _optionalNumber(
+        first(const [
+          'forecast_demand_30_days',
+          'predicted_demand',
+          'estimated_demand',
+          'demand_30d',
+          'forecast',
+          'predicted_value',
+          'demand',
+        ]),
+      ),
+      availableStock: _optionalNumber(
+        first(const [
+          'available_stock',
+          'stock_available',
+          'stock',
+          'available',
+        ]),
+      ),
+      reservedUnits: _optionalNumber(
+        first(const [
+          'reserved',
+          'reserved_stock',
+          'reservadas',
+          'reserved_units',
+        ]),
+      ),
+      risk: _optionalString(
+        first(const ['risk_level', 'risk', 'riesgo', 'status']),
+      ),
+      suggestedUnits: suggested != null && suggested.isFinite && suggested > 0
+          ? suggested
+          : 0,
+    );
+  }
+
+  final String bookId;
+  final String? title;
+  final String? category;
+  final double? demand30Days;
+  final double? availableStock;
+  final double? reservedUnits;
+  final String? risk;
+  final double suggestedUnits;
+}
+
+class LectioRecommendations {
+  const LectioRecommendations({required this.items});
+
+  factory LectioRecommendations.fromJson(Map<String, dynamic> json) {
+    Object? raw =
+        json['recommendations'] ??
+        json['items'] ??
+        json['results'] ??
+        json['data'];
+    if (raw is Map<String, dynamic>) {
+      raw = raw['recommendations'] ?? raw['items'] ?? raw['results'];
+    }
+    if (raw is! List) {
+      throw const LectioAiException(
+        'LECTIO-AI devolvió un formato inesperado para las recomendaciones.',
+      );
+    }
+    return LectioRecommendations(
+      items: raw
+          .whereType<Map<String, dynamic>>()
+          .map(LectioInventoryRecommendation.fromJson)
+          .where((item) => item.bookId.trim().isNotEmpty)
+          .toList(growable: false),
+    );
+  }
+
+  final List<LectioInventoryRecommendation> items;
+}
+
 abstract interface class LectioAiDataSource {
   Future<LectioPredictions> loadPredictions();
 
   Future<LectioCategoryAnalytics> loadCategoryAnalytics();
+
+  Future<LectioRecommendations> loadRecommendations();
 }
 
 class LectioAiService implements LectioAiDataSource {
@@ -196,6 +396,16 @@ class LectioAiService implements LectioAiDataSource {
     final response = await _get('/analytics', 'las tendencias');
     final json = _decodeObject(response.body, 'las tendencias');
     return LectioCategoryAnalytics.fromJson(json);
+  }
+
+  @override
+  Future<LectioRecommendations> loadRecommendations() async {
+    final response = await _get(
+      '/recommendations?limit=200',
+      'las recomendaciones de inventario',
+    );
+    final json = _decodeObject(response.body, 'las recomendaciones');
+    return LectioRecommendations.fromJson(json);
   }
 
   Future<http.Response> _get(String path, String dataName) async {

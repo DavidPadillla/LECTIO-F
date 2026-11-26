@@ -200,6 +200,41 @@ void main() {
     expect(analytics.categories, isEmpty);
     service.close();
   });
+
+  test('loads suggested replenishment values from recommendations', () async {
+    final client = _FakeClient(
+      statusCode: 200,
+      body: jsonEncode({
+        'recommendations': [
+          {
+            'book_id': 'book-7',
+            'title': 'Libro recomendado',
+            'category': 'Ciencia',
+            'forecast_demand_30_days': 8.5,
+            'available_stock': 2,
+            'reserved_units': 1,
+            'risk_level': 'ALTO',
+            'recommended_replenishment': 6,
+          },
+        ],
+      }),
+    );
+    final service = LectioAiService(
+      client: client,
+      baseUri: Uri.parse('https://ai.example.test'),
+    );
+
+    final recommendations = await service.loadRecommendations();
+
+    expect(client.lastRequest.url.path, '/recommendations');
+    expect(client.lastRequest.url.queryParameters['limit'], '200');
+    expect(recommendations.items, hasLength(1));
+    expect(recommendations.items.single.bookId, 'book-7');
+    expect(recommendations.items.single.demand30Days, 8.5);
+    expect(recommendations.items.single.category, 'Ciencia');
+    expect(recommendations.items.single.suggestedUnits, 6);
+    service.close();
+  });
 }
 
 class _FakeClient extends http.BaseClient {

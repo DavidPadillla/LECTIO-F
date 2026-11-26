@@ -12,8 +12,8 @@ const readingGenres = [
   'Ciencia',
   'Historia',
   'Arte',
-  'Fantasía',
-  'Filosofía',
+  'Fantas\u00eda',
+  'Filosof\u00eda',
 ];
 const readingStates = ['Por leer', 'Leyendo', 'Terminado'];
 
@@ -336,7 +336,7 @@ class LocalProfileStore extends ChangeNotifier {
         await notifications.deactivate(user);
       } catch (_) {
         throw const NotificationException(
-          'No se pudieron cancelar los recordatorios. Intenta cerrar sesión nuevamente.',
+          'No se pudieron cancelar los recordatorios. Intenta cerrar sesiÃ³n nuevamente.',
         );
       }
     });

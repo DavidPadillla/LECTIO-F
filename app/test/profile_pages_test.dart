@@ -50,6 +50,9 @@ class EmptyInsights implements LectioAiDataSource {
         periodStart: null,
         periodEnd: null,
       );
+  @override
+  Future<LectioRecommendations> loadRecommendations() async =>
+      const LectioRecommendations(items: []);
 }
 
 class TestCatalog implements LibrosVirtualesDataSource {

@@ -5,9 +5,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../auth/data/lectio_auth_service.dart';
+import '../data/catalogo_local.dart';
 import '../data/libros_service.dart';
 
 const _categories = [
@@ -15,8 +15,8 @@ const _categories = [
   'Ciencia',
   'Historia',
   'Arte',
-  'Fantasía',
-  'Filosofía',
+  'Fantas\u00eda',
+  'Filosof\u00eda',
 ];
 const _itemsPerPage = 12;
 
@@ -37,16 +37,11 @@ class LectioVirtualBooksPage extends StatefulWidget {
 }
 
 class _LectioVirtualBooksPageState extends State<LectioVirtualBooksPage> {
-  late final LibrosVirtualesService? _ownedService = widget.service == null
-      ? LibrosVirtualesService(session: widget.session)
-      : null;
-  late final LibrosVirtualesDataSource _service =
-      widget.service ?? _ownedService!;
   final _searchController = TextEditingController();
   final _selectedCategories = _categories.toSet();
   List<LibroVirtual> _books = [];
   String? _loadError;
-  bool _isLoading = true;
+  bool _isLoading = false;
   int _currentPage = 1;
   late final _profileStore = widget.profileStore ?? LocalProfileStore.instance;
   bool _useFavoriteGenres = false;
@@ -54,24 +49,38 @@ class _LectioVirtualBooksPageState extends State<LectioVirtualBooksPage> {
   @override
   void initState() {
     super.initState();
-    _loadBooks();
+    if (widget.service == null) {
+      _books = List<LibroVirtual>.of(librosLocales);
+    } else {
+      _loadBooks();
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _ownedService?.close();
     super.dispose();
   }
 
   Future<void> _loadBooks() async {
+    final service = widget.service;
+    if (service == null) {
+      setState(() {
+        _books = List<LibroVirtual>.of(librosLocales);
+        _isLoading = false;
+        _loadError = null;
+        _currentPage = 1;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _loadError = null;
       _currentPage = 1;
     });
     try {
-      final books = await _service.loadBooks();
+      final books = await service.loadBooks();
       if (!mounted) return;
       setState(() {
         _books = books;
@@ -100,17 +109,22 @@ class _LectioVirtualBooksPageState extends State<LectioVirtualBooksPage> {
   }
 
   Future<void> _readBook(LibroVirtual book) async {
-    try {
-      final opened = await launchUrl(
-        book.url,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened && mounted) {
-        _showMessage('No se pudo abrir el enlace de lectura.');
+    if (book is! LibroLocal) return;
+    final id = _bookId(book);
+    await _profileStore.update((profile) {
+      final saved = profile.books[id] ?? _savedBook(book, id);
+      if (saved.status == 'Por leer') {
+        profile.books[id] = saved.copy(status: 'Leyendo');
       }
-    } catch (error) {
-      if (mounted) _showMessage('No se pudo abrir el libro: $error');
-    }
+    });
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            _LocalBookReader(book: book, store: _profileStore, bookId: id),
+      ),
+    );
   }
 
   void _showMessage(String message) {
@@ -438,7 +452,7 @@ class _VirtualBooksHero extends StatelessWidget {
                   children: [
                     const _HeroStatus(
                       icon: Icons.circle,
-                      text: 'CATÁLOGO ACTIVO',
+                      text: 'CAT?LOGO ACTIVO',
                     ),
                     const _HeroStatus(
                       icon: Icons.auto_stories_outlined,
@@ -620,12 +634,7 @@ class _VirtualBookCard extends StatelessWidget {
           ),
           BookProgressControls(
             store: profileStore,
-            book: SavedBook(
-              url: book.url.toString(),
-              title: book.titulo,
-              category: book.categoria,
-              author: book.autor,
-            ),
+            book: _savedBook(book, _bookId(book)),
           ),
           SizedBox(
             width: double.infinity,
@@ -777,6 +786,152 @@ class _CatalogPagination extends StatelessWidget {
           label: const Text('Ir a página'),
         ),
       ],
+    );
+  }
+}
+
+String _bookId(LibroVirtual book) =>
+    'lectio://biblioteca/${book.titulo.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'-+$'), '')}';
+
+SavedBook _savedBook(LibroVirtual book, String id) => SavedBook(
+  url: id,
+  title: book.titulo,
+  category: book.categoria,
+  author: book.autor,
+);
+
+class _LocalBookReader extends StatefulWidget {
+  const _LocalBookReader({
+    required this.book,
+    required this.store,
+    required this.bookId,
+  });
+  final LibroLocal book;
+  final LocalProfileStore store;
+  final String bookId;
+  @override
+  State<_LocalBookReader> createState() => _LocalBookReaderState();
+}
+
+class _LocalBookReaderState extends State<_LocalBookReader> {
+  int _chapterIndex = 0;
+  double _textSize = 18;
+  @override
+  Widget build(BuildContext context) {
+    final chapter = widget.book.capitulos[_chapterIndex];
+    final isLast = _chapterIndex == widget.book.capitulos.length - 1;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Lector Lectio')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 48),
+            children: [
+              Text(
+                widget.book.categoria.toUpperCase(),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.book.titulo,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 5),
+              Text('Por ${widget.book.autor}'),
+              const SizedBox(height: 18),
+              BookProgressControls(
+                store: widget.store,
+                book: _savedBook(widget.book, widget.bookId),
+              ),
+              const Divider(height: 30),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButton<int>(
+                      isExpanded: true,
+                      value: _chapterIndex,
+                      items: [
+                        for (var i = 0; i < widget.book.capitulos.length; i++)
+                          DropdownMenuItem(
+                            value: i,
+                            child: Text(
+                              'Capítulo ${i + 1}: ${widget.book.capitulos[i].titulo}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _chapterIndex = value ?? 0),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Reducir texto',
+                    onPressed: () => setState(
+                      () => _textSize = math.max(14, _textSize - 1).toDouble(),
+                    ),
+                    icon: const Icon(Icons.text_decrease),
+                  ),
+                  IconButton(
+                    tooltip: 'Aumentar texto',
+                    onPressed: () => setState(
+                      () => _textSize = math.min(28, _textSize + 1).toDouble(),
+                    ),
+                    icon: const Icon(Icons.text_increase),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                chapter.titulo,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 18),
+              for (final paragraph in chapter.parrafos) ...[
+                Text(
+                  paragraph,
+                  style: TextStyle(fontSize: _textSize, height: 1.8),
+                ),
+                const SizedBox(height: 18),
+              ],
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _chapterIndex > 0
+                        ? () => setState(() => _chapterIndex--)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    label: const Text('Anterior'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: isLast
+                        ? () async {
+                            final navigator = Navigator.of(context);
+                            await widget.store.update((profile) {
+                              final saved =
+                                  profile.books[widget.bookId] ??
+                                  _savedBook(widget.book, widget.bookId);
+                              profile.books[widget.bookId] = saved.copy(
+                                status: 'Terminado',
+                              );
+                            });
+                            if (mounted) navigator.pop();
+                          }
+                        : () => setState(() => _chapterIndex++),
+                    icon: Icon(isLast ? Icons.check : Icons.chevron_right),
+                    label: Text(isLast ? 'Terminar libro' : 'Siguiente'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

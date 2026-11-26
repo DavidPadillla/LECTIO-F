@@ -123,6 +123,22 @@ void main() {
             category: 'Novelas',
             status: 'PREDICCION_DISPONIBLE',
             demand30Days: 5.9,
+            weeklyHistory: [
+              WeeklyDemand(periodStart: '2026-11-02', demand: 2),
+              WeeklyDemand(periodStart: '2026-11-09', demand: 4),
+            ],
+            weeklyForecast: [
+              WeeklyForecast(
+                periodStart: '2026-11-09',
+                daysCovered: 7,
+                predictedDemand: 5,
+              ),
+              WeeklyForecast(
+                periodStart: '2026-11-16',
+                daysCovered: 7,
+                predictedDemand: 6,
+              ),
+            ],
           ),
           LectioPrediction(
             bookId: 'null-demand-id',
@@ -175,49 +191,32 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Más solicitados próximamente'), findsOneWidget);
-    expect(find.text('Libro con más demanda'), findsOneWidget);
-    expect(find.text('Libro con menos demanda'), findsOneWidget);
-    expect(find.text('Libro del puesto cuatro'), findsOneWidget);
-    expect(find.text('Libro del puesto tres'), findsOneWidget);
-    expect(find.text('Libro del puesto dos'), findsOneWidget);
-    expect(find.text('Libro del puesto seis'), findsNothing);
-    expect(find.text('Libro sin estimación'), findsNothing);
-    expect(find.text('5.9'), findsNothing);
     expect(
-      find.text('Las tendencias por categoría no están disponibles por ahora.'),
+      find.text('Top 5 libros con mayor demanda prevista'),
       findsOneWidget,
     );
-    expect(
-      tester.getTopLeft(find.text('Libro con más demanda')).dy,
-      lessThan(tester.getTopLeft(find.text('Libro con menos demanda')).dy),
-    );
+    expect(find.byType(BarChart), findsNothing);
+    expect(find.text('Reponer 4'), findsNothing);
+    expect(find.text('Reservas reales'), findsOneWidget);
+    expect(find.text('Pron\u00f3stico'), findsOneWidget);
+    final evolution = tester.widget<LineChart>(find.byType(LineChart));
+    expect(evolution.data.lineBarsData, hasLength(2));
+    expect(find.text('Libro del puesto seis'), findsNothing);
+    expect(find.text('Libro sin estimaci?n'), findsNothing);
+    expect(find.textContaining('5.9 / 30'), findsOneWidget);
+    expect(evolution.data.lineBarsData[0].spots.map((spot) => spot.x), [0, 1]);
+    expect(evolution.data.lineBarsData[1].spots.map((spot) => spot.x), [0, 1]);
+    expect(evolution.data.lineBarsData[0].color, Colors.blue);
+    expect(evolution.data.lineBarsData[1].color, Colors.green);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('accordion shows category and monthly real history graphs', (
-    tester,
-  ) async {
+  testWidgets('prediction error displays a retry action', (tester) async {
     final source = _FakeLectioAiDataSource(
       predictionsError: const LectioAiException(
         'No se pudieron cargar las predicciones.',
       ),
-      analytics: const LectioCategoryAnalytics(
-        categories: [
-          CategoryDemand(category: 'Novelas', demand: 532),
-          CategoryDemand(category: 'Fantasía', demand: 486),
-          CategoryDemand(category: 'Ciencia', demand: 391),
-        ],
-        monthlyDemand: [
-          MonthlyDemand(month: '2026-09', demand: 100),
-          MonthlyDemand(month: '2026-10', demand: 95),
-          MonthlyDemand(month: '2026-11', demand: 24),
-        ],
-        periodStart: '2024-11-11',
-        periodEnd: '2026-11-09',
-      ),
     );
-
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -231,37 +230,58 @@ void main() {
       find.text('No se pudieron cargar las predicciones.'),
       findsOneWidget,
     );
-    expect(find.text('Novelas · 532'), findsNothing);
-    expect(
-      find.bySemanticsLabel(RegExp('Gráfica radar de demanda histórica')),
-      findsNothing,
-    );
-    await tester.tap(find.text('Demanda histórica por categoría'));
-    await tester.pumpAndSettle();
-    expect(find.text('Novelas · 532'), findsOneWidget);
-    expect(find.text('Fantasía · 486'), findsOneWidget);
-    expect(find.textContaining('2024-11-11 al 2026-11-09'), findsOneWidget);
-    expect(
-      find.bySemanticsLabel(RegExp('Gráfica radar de demanda histórica')),
-      findsOneWidget,
-    );
-    expect(find.byType(RadarChart), findsOneWidget);
-
-    await tester.ensureVisible(find.text('Demanda histórica por mes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Demanda histórica por mes'));
-    await tester.pumpAndSettle();
-    expect(
-      find.bySemanticsLabel(RegExp('Gráfica de demanda histórica mensual')),
-      findsOneWidget,
-    );
-    expect(find.byType(LineChart), findsOneWidget);
+    expect(find.text('Reintentar'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('empty prediction and category results are informational', (
+  testWidgets('monthly and category demand render animated bar charts', (
     tester,
   ) async {
+    final source = _FakeLectioAiDataSource(
+      analytics: const LectioCategoryAnalytics(
+        categories: [
+          CategoryDemand(category: 'Novelas', demand: 532),
+          CategoryDemand(category: 'Ciencia', demand: 391),
+          CategoryDemand(category: 'Historia', demand: 276),
+        ],
+        monthlyDemand: [
+          MonthlyDemand(month: '2026-10', demand: 95),
+          MonthlyDemand(month: '2026-11', demand: 124),
+        ],
+        periodStart: '2025-11-25',
+        periodEnd: '2026-11-24',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [LectioAiInsights(dataSource: source)]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Demanda mensual'), findsOneWidget);
+    expect(find.text('Demanda por categoría'), findsOneWidget);
+    expect(find.byType(BarChart), findsOneWidget);
+    expect(
+      tester.widget<BarChart>(find.byType(BarChart)).data.barGroups,
+      isNotEmpty,
+    );
+    expect(find.byType(RadarChart), findsOneWidget);
+    expect(
+      tester
+          .widget<RadarChart>(find.byType(RadarChart))
+          .data
+          .dataSets
+          .single
+          .dataEntries,
+      hasLength(3),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty prediction results are informational', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -274,12 +294,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Aún no hay libros con una predicción de demanda disponible.'),
+      find.text(
+        'Todav\u00eda no hay predicciones disponibles para los libros de reservas.',
+      ),
       findsOneWidget,
     );
     expect(
-      find.text('LECTIO-AI no tiene estadísticas históricas disponibles.'),
-      findsOneWidget,
+      find.text('LECTIO-AI no tiene estad?sticas hist?ricas disponibles.'),
+      findsNothing,
     );
     expect(tester.takeException(), isNull);
   });
@@ -974,6 +996,10 @@ class _FakeLectioAiDataSource implements LectioAiDataSource {
     if (analyticsError case final error?) throw error;
     return analytics;
   }
+
+  @override
+  Future<LectioRecommendations> loadRecommendations() async =>
+      const LectioRecommendations(items: []);
 }
 
 class _FakeChallengeDataSource implements ChallengeDataSource {
